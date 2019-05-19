@@ -1,0 +1,7 @@
+Paper Mario (U) \[!].z64
+/target
+/mod
+/bin/ztar-rod
+/bin/ztar-rod.exe
+/src/script/grammar.rs
+**/*.rs.bk

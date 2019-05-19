@@ -1,0 +1,97 @@
+script = {
+    SOI ~
+    (function | "\n")* ~
+    EOI
+}
+
+function = { "fun" ~ id ~ arg_list ~ stmts }
+arg_list = {
+    "(" ~ ")" |
+    "(" ~ ty ~ id ~ ("," ~ ty ~ id)* ~ ")"
+}
+
+stmt = {
+    /*var_declare |*/ var_assign | call |
+    sleep_stmt | return_stmt | goto_stmt | label_stmt |
+    if_stmt | switch_stmt | thread_stmt | loop_stmt
+}
+stmts = { "{" ~ (stmt? ~ NEWLINE)* ~ "}" }
+
+if_stmt = {
+    "if" ~ expr ~ (stmts | NEWLINE? ~ stmt) ~
+    ("else" ~ (stmts | NEWLINE? ~ stmt))?
+}
+
+switch_stmt  = { "switch" ~ expr ~ "{" ~ (switch_case? ~ NEWLINE)* ~ "}" }
+switch_case  = { ("case" ~ op ~ expr | default_case) ~ (NEWLINE ~ switch_case | stmts | NEWLINE? ~ stmt) }
+default_case = { "default" }
+
+thread_stmt = { "thread" ~ stmts }
+loop_stmt   = { "loop" ~ literal_int? ~ stmts }
+
+sleep_stmt  = { "sleep" ~ expr ~ time_unit }
+time_unit   = { "secs" | "" }
+return_stmt = { "return" ~ expr? }
+goto_stmt   = { "goto" ~ label }
+label_stmt  = { "label" ~ label }
+
+var_declare = { ty ~ id ~ ("=" ~ expr)? }
+var_assign  = { (arr_access | id) ~ op_assign ~ expr }
+op_assign   = { "=" | "+=" | "-=" | "*=" | "/=" | "%=" }
+
+expr = { term ~ (op ~ term)* }
+term = {
+    paren_expr |
+    negate |
+    call |
+    arr_access |
+    id |
+    literal
+}
+
+paren_expr = { "(" ~ expr ~ ")" }
+negate     = { "-" ~ term }
+
+call       = { thread? ~ (id | literal_int) ~ expr_list }
+thread     = { "thread" }
+expr_list  = {
+    "(" ~ ")" |
+    "(" ~ expr ~ ("," ~ expr)* ~ ")"
+}
+
+arr_access = { id ~ "[" ~ expr ~ "]" }
+
+id    = ${ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+label = ${ "." ~ id }
+
+literal = { literal_float | literal_int | literal_bool }
+literal_int = ${
+    "0x" ~ ASCII_HEX_DIGIT+ |
+    "0b" ~ ("0" | "1")+ |
+    ASCII_DIGIT+
+}
+literal_float = ${ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+literal_bool = { "true" | "false" }
+
+ty = { "any" | "int" | "uint" | "float" | "fun" | "asm" | "bool" }
+
+op = {
+    op_eq | op_ne | op_gte | op_lte | op_gt | op_lt | op_and | op_notand |
+    op_add | op_sub
+}
+op_eq  = { "==" }
+op_ne  = { "!=" }
+op_gte = { ">=" }
+op_lte = { "<=" }
+op_gt  = { ">" }
+op_lt  = { "<" }
+op_and = { "&" }
+op_notand = { "!&" }
+op_add = { "+" }
+op_sub = { "-" }
+// TODO more operators: infix operators, etc
+
+WHITESPACE    = _{ " " | "\t" }
+COMMENT       = _{ line_comment | block_comment }
+line_comment  = @{ "//" ~ (!NEWLINE ~ ANY)* }
+block_comment = @{ "/*" ~ (!"*/" ~ (ANY | block_comment))* ~ "*/" }
