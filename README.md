@@ -17,7 +17,7 @@ With `Paper Mario (U) [!].z64` in the working-directory:
 $ cargo run
 ```
 
-It'll eventually panic as some operations are not yet unimplemented, but it should populate the `mod/` directory.
+It'll eventually panic as some operations are not yet implemented, but it should populate the `mod/` directory.
 
 # license
 
