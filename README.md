@@ -1,8 +1,3 @@
-**ztar rod** &emdash; paper mario modification tool
-###### [discord server](https://discord.gg/88vy32w)
-
----
-
 # what is this
 
 ztar rod is a work-in-progress romhacking tool for [Paper Mario](https://wikipedia.org/wiki/Paper_Mario). It is currently able to dump map script bytecode to source-code and parse it back into an AST.
