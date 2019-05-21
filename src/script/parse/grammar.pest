@@ -1,3 +1,5 @@
+// TODO
+
 script = {
     SOI ~
     (function | "\n")* ~
@@ -7,11 +9,11 @@ script = {
 function = { "fun" ~ id ~ arg_list ~ stmts }
 arg_list = {
     "(" ~ ")" |
-    "(" ~ ty ~ id ~ ("," ~ ty ~ id)* ~ ")"
+    "(" ~ id ~ (":" ~ ty)? ~ ("," ~ id ~ (":" ~ ty)?)* ~ ")"
 }
 
 stmt = {
-    /*var_declare |*/ var_assign | call |
+    var_declare | var_assign | call |
     sleep_stmt | return_stmt | goto_stmt | label_stmt |
     if_stmt | switch_stmt | thread_stmt | loop_stmt
 }
@@ -31,11 +33,11 @@ loop_stmt   = { "loop" ~ literal_int? ~ stmts }
 
 sleep_stmt  = { "sleep" ~ expr ~ time_unit }
 time_unit   = { "secs" | "" }
-return_stmt = { "return" ~ expr? }
+return_stmt = { "return" }
 goto_stmt   = { "goto" ~ label }
 label_stmt  = { "label" ~ label }
 
-var_declare = { ty ~ id ~ ("=" ~ expr)? }
+var_declare = { "var" ~ id ~ (":" ~ ty)? ~ "=" ~ expr }
 var_assign  = { (arr_access | id) ~ op_assign ~ expr }
 op_assign   = { "=" | "+=" | "-=" | "*=" | "/=" | "%=" }
 
@@ -73,7 +75,7 @@ literal_int = ${
 literal_float = ${ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
 literal_bool = { "true" | "false" }
 
-ty = { "any" | "int" | "uint" | "float" | "fun" | "asm" | "bool" }
+ty = { "int" | "float" | "bool" | "thread" | "fun" | "asm" }
 
 op = {
     op_eq | op_ne | op_gte | op_lte | op_gt | op_lt | op_and | op_notand |

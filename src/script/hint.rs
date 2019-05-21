@@ -1,7 +1,8 @@
+/*
 use std::collections::HashMap;
 use maplit::hashmap;
 use lazy_static::lazy_static;
-use super::{Type::*, Signature};
+use super::type::{Type::*, Signature, sig};
 
 lazy_static! {
     // TODO: add everything
@@ -11,15 +12,12 @@ lazy_static! {
         425 => "MAP_LOCATION",
     };
 
-    // TODO: namespace methods? or have compile-time structs + syntactic sugar
-    //       e.g. `model_set_vis(model_id, true)` -> `model_id.visible = true`
     pub static ref METHODS: HashMap<u32, (&'static str, Signature)> = hashmap!{
         //// Scripts ////
 
-        0x80285960 => ("enter_walk", Signature::new(vec![
-            Function(Box::new(Signature::new(vec![], None))),
-        ], None)),
+        0x80285960 => sig!{ "enter_walk" },
 
+        /*
 
         //// Functions ////
 
@@ -34,5 +32,8 @@ lazy_static! {
         0x802CB680 => ("cam_set_flag4", Signature::new(vec![Int, Int], None)),
 
         0x802D9700 => ("use_sprite_shading", Signature::new(vec![Int], None)),
+
+        */
     };
 }
+*/

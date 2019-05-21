@@ -1,29 +1,35 @@
 use std::path::PathBuf;
+use std::io::{self, BufWriter, Write};
 use std::fs::{self, File};
-use std::io::{Read, Write, Seek};
-use failure::{Error, bail};
+use failure_derive::*;
 use itertools::Itertools;
-use crate::rom::{Rom, Location};
-use crate::script::bc;
+use crate::rom::{Rom, loc::Location};
+use crate::script;
+
+fn create_dir_if_not_exist(path: &str) -> Result<(), Error> {
+    let path = PathBuf::from(path);
+
+    if !path.is_dir() {
+        fs::create_dir(&path)?;
+        Ok(())
+    } else if path.is_file() {
+        Err(Error::DirectoryIsFile(path.to_str().unwrap().to_string()))
+    } else {
+        Ok(())
+    }
+}
 
 pub struct ModDir {
-    root: PathBuf,
+    root: String,
 }
 
 impl ModDir {
     /// Opens a ModDir for reading/writing. If it doesn't exist, it will be
     /// created. If the path exists but points to a file, returns `Err`.
     pub fn open(path: &str) -> Result<ModDir, Error> {
-        let path = PathBuf::from(path);
-
-        if !path.is_dir() {
-            fs::create_dir(&path)?;
-        } else if path.is_file() {
-            bail!("Mod dir {:?} exists but is a file", path);
-        }
-
+        create_dir_if_not_exist(path)?;
         Ok(ModDir {
-            root: path,
+            root: path.to_string(),
         })
     }
 
@@ -35,59 +41,50 @@ impl ModDir {
         Ok(())
     }
 
-    /// Dumps the given rom to the filesystem. You might want to `clear()`
-    /// beforehand. Returns `Err` if files/directories exist but are the wrong
-    /// type.
-    pub fn dump<T: Read + Write + Seek>(&self, rom: &mut Rom<T>) -> Result<(), Error> {
+    /// Dumps the given rom to the filesystem.
+    pub fn dump(&self, rom: &mut Rom) -> Result<(), Error> {
         let areas_loc = Location::new(0x0006E8F0);
         for i in 0..28 {
             rom.seek(areas_loc.add_offset(i * 16));
             let area = rom.read_area();
 
-            // TODO: dump maptable
+            create_dir_if_not_exist(&format!("{}/{}", self.root, area.name))?;
 
-            for map in area.maps.iter().unique_by(|map| map.name.clone()) {
-                let mut path = self.root.clone();
-                path.push(&area.name);
-                path.push(&map.name);
+            for map in area.maps.into_iter().unique_by(|map| map.name.clone()) {
+                // Write script file
+                {
+                    let path = format!("{}/{}/{}.script", self.root, area.name, map.name);
+                    let file = File::create(&path)?;
 
-                println!("dumping {}", map.name);
-
-                if path.is_file() {
-                    bail!("Map dir {:?} exists but is a file", path);
-                } else if !path.is_dir() {
-                    fs::create_dir_all(&path)?;
+                    let mut w = BufWriter::new(&file);
+                    write!(w, "{}",
+                        script::decompile_map(map, rom)
+                        .or_else(|err| Err(Error::ScriptDecompilation(path, err)))?
+                    )?;
                 }
 
-                let path = path.to_str().unwrap().to_owned();
-
-                // TODO: dump header data etc
-
-                let mut script_f = File::create(path + "/script.txt")?;
-                let blocks = map.main_func.scan_data_offsets();
-
-                writeln!(script_f, "// {:?}\n", &map.dma)?;
-                writeln!(script_f, "// main function\n{}", &map.main_func)?;
-
-                for (datatype, offset) in blocks {
-                    use bc::DataType::*;
-
-                    writeln!(script_f, "\n// offset 0x{:04X} (rom 0x{:08X})", offset, map.dma.start + offset)?;
-
-                    match datatype {
-                        Function => {
-                            rom.seek(map.dma.loc_at_offset(offset));
-                            let bc = rom.read_bytecode(offset);
-
-                            writeln!(script_f, "{}", bc)?;
-                        },
-                        Asm => writeln!(script_f, "// assembly here soon (tm)!")?,
-                        Unknown => writeln!(script_f, "// unknown struct")?,
-                    }
-                }
+                // TODO other stuff
             }
         }
 
         Ok(())
+    }
+}
+
+#[derive(Debug, Fail)]
+pub enum Error {
+    #[fail(display = "io error: {}", _0)]
+    Io(#[fail(cause)] io::Error),
+
+    #[fail(display = "file {} should be a directory", _0)]
+    DirectoryIsFile(String),
+
+    #[fail(display = "error dumping {} ({})", _0, _1)]
+    ScriptDecompilation(String, #[fail(cause)] script::Error)
+}
+
+impl From<io::Error> for Error {
+    fn from(error: io::Error) -> Error {
+        Error::Io(error)
     }
 }
