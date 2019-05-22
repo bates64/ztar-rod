@@ -46,22 +46,27 @@ impl Unparse for Statement {
                     expression.unparse(scope),
                 ),
 
-            Statement::VarDeclare { datatype, identifiers, expression } => match expression {
-                Some(expression) => format!("{} {} = {}",
-                    datatype.unparse(scope),
-                    identifiers
-                        .into_iter()
-                        .map(|ident| ident.unparse(scope))
-                        .join(", "),
-                    expression.unparse(scope),
-                ),
-                None => format!("{} {}",
-                    datatype.unparse(scope),
-                    identifiers
-                        .into_iter()
-                        .map(|ident| ident.unparse(scope))
-                        .join(", "),
-                ),
+            Statement::VarDeclare { identifier, datatype, expression } => match datatype.into_inner() {
+                DataType::Any => match expression {
+                    Some(expression) => format!("var {} = {}",
+                        identifier.unparse(scope),
+                        expression.unparse(scope),
+                    ),
+                    None => format!("var {}",
+                        identifier.unparse(scope),
+                    ),
+                },
+                datatype => match expression {
+                    Some(expression) => format!("var {}: {} = {}",
+                        identifier.unparse(scope),
+                        datatype.unparse(scope),
+                        expression.unparse(scope),
+                    ),
+                    None => format!("var {}: {}",
+                        identifier.unparse(scope),
+                        datatype.unparse(scope),
+                    ),
+                },
             },
 
             Statement::MethodCall { method, arguments, threading } => match threading {

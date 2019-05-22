@@ -30,20 +30,17 @@ pub fn decompile_map(map: Map, _rom: &mut Rom) -> Result<String, Error> {
         let mut decl = Declaration::Fun {
             name:      IdentifierOrPointer::Pointer(loc.into()),
             arguments: Vec::new(),
-            block:     bc.decompile()?,
+            block:     bc.decompile(&mut scope)?,
         };
 
-        // TODO: type inference here
-
-        // TODO: decompile pointers within
-
-        // TODO: type inference here
-
         for mut block in decl.inner_blocks_mut() {
-            fix_call_arg_capture(&mut block, &scope)?
+            // TODO: decompile pointers within, followed by a type inference pass
+
+            fix_call_arg_capture(&mut block, &scope)?;
+            infer_datatypes(&mut block, &mut scope)?;
         }
 
-        // TODO: type inference here
+        // TODO: replace decl.arguments with the types that were inferred
 
         declarations.push(decl);
     }
@@ -79,20 +76,8 @@ pub fn decompile_map(map: Map, _rom: &mut Rom) -> Result<String, Error> {
 fn fix_call_arg_capture(block: &mut Vec<Statement>, scope: &Scope) -> Result<(), Error> {
     for stmt in block.iter_mut() {
         if let Statement::MethodCall { method, arguments, .. } = stmt {
-            // Lookup the method signature.
-            let datatype = match method {
-                IdentifierOrPointer::Identifier(Identifier(name)) =>
-                    scope.lookup_name(name),
-
-                 // Look-up the pointer - if it has a name, use the name instead
-                IdentifierOrPointer::Pointer(ptr) => match scope.lookup_ptr(*ptr) {
-                    Some(name) => scope.lookup_name(name),
-                    None       => None,
-                },
-            };
-
             // Only functions capture - asm methods take args normally.
-            if let Some(DataType::Fun(argument_types)) = datatype {
+            if let Some((_, DataType::Fun(argument_types))) = method.lookup(scope) {
                 assert_eq!(arguments.len(), 0);
 
                 for (n, _) in argument_types.iter().enumerate() {
@@ -115,10 +100,119 @@ fn fix_call_arg_capture(block: &mut Vec<Statement>, scope: &Scope) -> Result<(),
     Ok(())
 }
 
+/// Performs a single type inference pass. Replaces 'any' declarations and their
+/// respective scope mappings if their types can be inferred.
+fn infer_datatypes(block: &mut Vec<Statement>, mut scope: &mut Scope) -> Result<(), Error> {
+    let mut made_inferences = true;
+
+    // This works like a bubble sort -- keep inferring types until we can't.
+    while made_inferences {
+        made_inferences = false;
+
+        // We only insert inferred types into scope after the interator
+        // finishes, because we perform lookups in there and the borrow checker
+        // would scream at us for mutating it while we had an immutable ref.
+        let mut inferred: Vec<(String, DataType)> = Vec::new();
+
+        // We iterate in reverse so we can figure out the types before we see their
+        // declaration statement (once we do see it, we update its type).
+        for stmt in block.iter_mut().rev() {
+            match stmt {
+                // Update var declarations with inferred types.
+                Statement::VarDeclare { datatype, identifier: Identifier(name), expression } => {
+                    match scope.lookup_name_depth(&name, 0) {
+                        Some(inferred_datatype) => match datatype.replace(DataType::Any) {
+                            // User has left it up to the compiler to infer the
+                            // type, so lets do that.
+                            DataType::Any => {
+                                datatype.replace(inferred_datatype.clone());
+                            },
+
+                            // User declared the type but we inferred its use
+                            // as some other type. Error.
+                            datatype => return Err(Error::VarDeclareTypeMismatch {
+                                identifier:        name.clone(),
+                                declared_datatype: datatype,
+                                inferred_datatype: inferred_datatype.clone(),
+                            }),
+                        },
+
+                        // The variable is declared here but isn't in the current
+                        // scope, so add it to the scope after this pass.
+                        None => inferred.push((name.clone(), match expression {
+                            Some(expression) => expression.infer_datatype(&scope),
+                            None             => DataType::Any,
+                        })),
+                    }
+                },
+
+                // Infer left-hand-type by the right-hand-type of var assignments.
+                Statement::VarAssign { identifier: Identifier(name), expression } => {
+                    // We only need to infer Any (i.e. unknown) types.
+                    if let Some(DataType::Any) = scope.lookup_name(name) {
+                        inferred.push((name.clone(), expression.infer_datatype(scope)));
+                    }
+                },
+
+                // Infer types of method call arguments.
+                Statement::MethodCall { method, arguments, .. } => match method.lookup(scope) {
+                    Some((_, &DataType::Asm(ref arg_types))) |
+                    Some((_, &DataType::Fun(ref arg_types))) => {
+                        for (ty, arg) in arg_types.iter().zip(arguments.iter()) {
+                            // We only care about identifier arguments.
+                            if let Expression::Identifier(Identifier(name)) = arg {
+                                // We only need to infer Any (i.e. unknown) types.
+                                if let Some(DataType::Any) = scope.lookup_name(name) {
+                                    // Define the inferred type!
+                                    inferred.push((name.clone(), ty.clone()));
+                                }
+                            }
+                        }
+                    },
+
+                    _ => (),
+                },
+
+                _ => (),
+            }
+
+            for mut inner_block in stmt.inner_blocks_mut() {
+                infer_datatypes(&mut inner_block, &mut scope)?;
+            }
+        }
+
+        // Define the inferred types in-scope.
+        for (name, datatype) in inferred.into_iter() {
+            if let DataType::Any = datatype {
+                // ...why is this even here?
+                break
+            }
+
+            match scope.insert_name(name, datatype) {
+                Some(DataType::Any) => (),
+                Some(_) => panic!("type inferred but var has a known type already"),
+                None => (),
+            }
+
+            made_inferences = true
+        }
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Fail)]
 pub enum Error {
     #[fail(display = "failed to decompile bytecode: {}", _0)]
     BytecodeDecompile(#[fail(cause)] bc::Error),
+
+    #[fail(display = "variable '{}' declared as {} but is used as {}",
+        identifier, declared_datatype, inferred_datatype)]
+    VarDeclareTypeMismatch {
+        identifier:    String,
+        declared_datatype: DataType,
+        inferred_datatype: DataType,
+    },
 }
 
 impl From<bc::Error> for Error {
@@ -130,6 +224,7 @@ impl From<bc::Error> for Error {
 /// A priority-queue mapping of (u32 -> String -> DataType); i.e. Scope provides
 /// lookups of pointer-to-name and name-to-datatype, preferring the current
 /// scope (see `push` and `pop`) when performing lookups.
+#[derive(Debug)]
 pub struct Scope {
     layers: VecDeque<(HashMap<u32, String>, HashMap<String, DataType>)>,
 }
@@ -182,6 +277,19 @@ impl Scope {
     /// Looks-up the datatype associated with a given name.
     pub fn lookup_name(&self, name: &str) -> Option<&DataType> {
         for layer in self.layers.iter() {
+            if let Some(datatype) = layer.1.get(name) {
+                return Some(datatype);
+            }
+        }
+
+        None
+    }
+
+    /// Looks-up the datatype associated with a given name to a given depth.
+    /// For example, providing a max depth of 0 would only search the current
+    /// scope's mapping.
+    pub fn lookup_name_depth(&self, name: &str, max_depth: usize) -> Option<&DataType> {
+        for layer in self.layers.iter().take(max_depth + 1) {
             if let Some(datatype) = layer.1.get(name) {
                 return Some(datatype);
             }

@@ -7,6 +7,7 @@ pub enum DataType {
     Int,
     Float,
     Bool,
+    Arr(Box<DataType>),
     Fun(Vec<DataType>),
     Asm(Vec<DataType>),
     // TODO: custom structs and enums
@@ -20,6 +21,7 @@ impl Display for DataType {
             Int       => write!(f, "int"),
             Float     => write!(f, "float"),
             Bool      => write!(f, "bool"),
+            Arr(item) => write!(f, "[{}]", item),
             Fun(args) => write!(f, "fun({})", join(args, ", ")),
             Asm(args) => write!(f, "asm({})", join(args, ", ")),
         }

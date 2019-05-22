@@ -1,16 +1,18 @@
 use std::mem::transmute;
 use std::convert::TryInto;
 use std::collections::{VecDeque, HashSet};
+use std::cell::RefCell;
 use failure_derive::*;
 use num_enum::{TryFromPrimitive, IntoPrimitive};
 use super::datatype::DataType;
 use super::parse::ast::*;
 use super::globals::*;
+use super::Scope;
 
 #[derive(Debug, Clone)]
 pub struct Bytecode {
     data: VecDeque<Operation>,
-    seen_identifiers: HashSet<u32>,
+    seen_identifiers: HashSet<Arg>,
 }
 
 pub type Operation = (Opcode, Vec<Arg>);
@@ -42,7 +44,7 @@ impl Bytecode {
         }
     }
 
-    pub fn decompile(mut self) -> Result<Vec<Statement>, Error> {
+    pub fn decompile(mut self, scope: &mut Scope) -> Result<Vec<Statement>, Error> {
         let mut stmts = Vec::new();
         loop {
             // See if we've reached the end
@@ -54,6 +56,21 @@ impl Bytecode {
                     // Remove pointless trailing return statement, if there is one.
                     if let Statement::Return = stmts[stmts.len() - 1] {
                         stmts.pop();
+                    }
+
+                    // Bring local variables (FunWords and FunFlags) into scope.
+                    for oparg in self.seen_identifiers.into_iter() {
+                        match oparg.kind() {
+                            ArgKind::FunWord => {
+                                let name = oparg.into_identifier().unwrap().0;
+                                scope.insert_name(name, DataType::Any);
+                            },
+                            ArgKind::FunFlag => {
+                                let name = oparg.into_identifier().unwrap().0;
+                                scope.insert_name(name, DataType::Bool);
+                            },
+                            _ => (),
+                        }
                     }
 
                     Ok(stmts)
@@ -205,26 +222,26 @@ impl Bytecode {
                     .into_expression();
 
                 // If we haven't seen the identifier yet, declare it.
-                if !self.seen_identifiers.contains(&identifier_arg.0) {
-                    self.seen_identifiers.insert(identifier_arg.0);
+                if !self.seen_identifiers.contains(&identifier_arg) {
+                    self.seen_identifiers.insert(*identifier_arg);
 
                     // Only declare identifiers that this function owns.
                     match identifier_arg.kind() {
                         ArgKind::FunWord => return Ok(vec![Statement::VarDeclare {
-                            datatype: match opcode {
+                            datatype: RefCell::new(match opcode {
                                 // Floats are *always* floats, but bytecode ints
                                 // are sometimes pointers or some other datatype.
                                 // We'll leave detecting that to type inference.
                                 Opcode::SetFloat => DataType::Float,
                                 _                => DataType::Any,
-                            },
-                            identifiers: vec![identifier],
+                            }),
+                            identifier,
                             expression: Some(expression),
                         }]),
 
                         ArgKind::FunFlag => return Ok(vec![Statement::VarDeclare {
-                            datatype: DataType::Bool,
-                            identifiers: vec![identifier],
+                            datatype: RefCell::new(DataType::Bool),
+                            identifier,
                             expression: Some(expression),
                         }]),
 
@@ -370,7 +387,7 @@ impl Opcode {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Arg(u32);
 
 #[derive(Debug)]
