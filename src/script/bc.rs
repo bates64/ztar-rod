@@ -51,7 +51,11 @@ impl Bytecode {
                     // There's still data left after the End opcode :/
                     Err(Error::UnexpectedEnd)
                 } else {
-                    // We're done! :tada:
+                    // Remove pointless trailing return statement, if there is one.
+                    if let Statement::Return = stmts[stmts.len() - 1] {
+                        stmts.pop();
+                    }
+
                     Ok(stmts)
                 };
             }
