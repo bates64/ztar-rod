@@ -1,5 +1,6 @@
 use std::fmt::Write;
 use std::collections::{VecDeque, HashMap};
+use std::cell::RefCell;
 use failure_derive::*;
 use crate::rom::{Rom, Map};
 
@@ -86,7 +87,7 @@ fn fix_call_arg_capture(block: &mut Vec<Statement>, scope: &Scope) -> Result<(),
 
                     let name = format!("{}_{:X}", globals::FUNWORD_STR, n);
 
-                    arguments.push(Expression::Identifier(Identifier(name)));
+                    arguments.push(RefCell::new(Expression::Identifier(Identifier(name))));
                 }
             }
         }
@@ -126,6 +127,15 @@ fn infer_datatypes(block: &mut Vec<Statement>, mut scope: &mut Scope) -> Result<
                             // type, so lets do that.
                             DataType::Any => {
                                 datatype.replace(inferred_datatype.clone());
+
+                                if let DataType::Bool = inferred_datatype {
+                                    // Update int literal to a bool literal.
+                                    if let Some(expression) = expression {
+                                        if let Expression::LiteralInt(v) = expression.clone().into_inner() {
+                                            expression.replace(Expression::LiteralBool(v == 1));
+                                        }
+                                    }
+                                }
                             },
 
                             // User declared the type but we inferred its use
@@ -140,7 +150,7 @@ fn infer_datatypes(block: &mut Vec<Statement>, mut scope: &mut Scope) -> Result<
                         // The variable is declared here but isn't in the current
                         // scope, so add it to the scope after this pass.
                         None => inferred.push((name.clone(), match expression {
-                            Some(expression) => expression.infer_datatype(&scope),
+                            Some(expression) => expression.borrow().infer_datatype(&scope),
                             None             => DataType::Any,
                         })),
                     }
@@ -148,9 +158,19 @@ fn infer_datatypes(block: &mut Vec<Statement>, mut scope: &mut Scope) -> Result<
 
                 // Infer left-hand-type by the right-hand-type of var assignments.
                 Statement::VarAssign { identifier: Identifier(name), expression } => {
-                    // We only need to infer Any (i.e. unknown) types.
-                    if let Some(DataType::Any) = scope.lookup_name(name) {
-                        inferred.push((name.clone(), expression.infer_datatype(scope)));
+                    match scope.lookup_name(name) {
+                        // We only need to infer Any (i.e. unknown) types.
+                        Some(DataType::Any)
+                            => inferred.push((name.clone(), expression.borrow().infer_datatype(scope))),
+
+                        // Update int literal to bool literal.
+                        Some(DataType::Bool) => {
+                            if let Expression::LiteralInt(v) = expression.clone().into_inner() {
+                                expression.replace(Expression::LiteralBool(v == 1));
+                            }
+                        },
+
+                        _ => (),
                     }
                 },
 
@@ -159,13 +179,24 @@ fn infer_datatypes(block: &mut Vec<Statement>, mut scope: &mut Scope) -> Result<
                     Some((_, &DataType::Asm(ref arg_types))) |
                     Some((_, &DataType::Fun(ref arg_types))) => {
                         for (ty, arg) in arg_types.iter().zip(arguments.iter()) {
-                            // We only care about identifier arguments.
-                            if let Expression::Identifier(Identifier(name)) = arg {
-                                // We only need to infer Any (i.e. unknown) types.
-                                if let Some(DataType::Any) = scope.lookup_name(name) {
-                                    // Define the inferred type!
-                                    inferred.push((name.clone(), ty.clone()));
-                                }
+                            match arg.clone().into_inner() {
+                                // Only identifiers influence type inference.
+                                Expression::Identifier(Identifier(name)) => {
+                                    // We only need to infer Any (i.e. unknown) types.
+                                    if let Some(DataType::Any) = scope.lookup_name(&name) {
+                                        // Define the inferred type!
+                                        inferred.push((name.clone(), ty.clone()));
+                                    }
+                                },
+
+                                // Update int literal to bool literal.
+                                Expression::LiteralInt(v) => {
+                                    if let DataType::Bool = ty {
+                                        arg.replace(Expression::LiteralBool(v == 1));
+                                    }
+                                },
+
+                                _ => (),
                             }
                         }
                     },

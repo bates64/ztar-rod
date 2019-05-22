@@ -217,9 +217,9 @@ impl Bytecode {
                 let identifier = identifier_arg.into_identifier()
                     .ok_or_else(|| Error::BadArg(opcode, 0))?;
 
-                let expression = opargs.get(1)
+                let expression = RefCell::new(opargs.get(1)
                     .ok_or_else(|| Error::MissingArg(opcode, 1))?
-                    .into_expression();
+                    .into_expression());
 
                 // If we haven't seen the identifier yet, declare it.
                 if !self.seen_identifiers.contains(&identifier_arg) {
@@ -260,7 +260,7 @@ impl Bytecode {
                     .ok_or_else(|| Error::BadArg(opcode, 0))?,
                 arguments: opargs.iter()
                     .skip(1)
-                    .map(|oparg| oparg.into_expression())
+                    .map(|oparg| RefCell::new(oparg.into_expression()))
                     .collect(),
                 threading: match opcode {
                     Opcode::Exec => MethodThreading::Yes,
@@ -274,7 +274,7 @@ impl Bytecode {
                     .ok_or_else(|| Error::BadArg(opcode, 0))?,
                 arguments: opargs.iter()
                     .skip(2)
-                    .map(|oparg| oparg.into_expression())
+                    .map(|oparg| RefCell::new(oparg.into_expression()))
                     .collect(),
                 threading: MethodThreading::Assign(opargs.get(1)
                     .ok_or_else(|| Error::MissingArg(opcode, 1))?

@@ -41,18 +41,18 @@ pub enum Statement {
 
     VarAssign {
         identifier: Identifier,
-        expression: Expression,
+        expression: RefCell<Expression>,
     },
 
     VarDeclare {
-        datatype:   RefCell<DataType>, // interior mutability needed for type inference
+        datatype:   RefCell<DataType>,
         identifier: Identifier,
-        expression: Option<Expression>,
+        expression: Option<RefCell<Expression>>,
     },
 
     MethodCall {
         method:    IdentifierOrPointer,
-        arguments: Vec<Expression>,
+        arguments: Vec<RefCell<Expression>>,
         threading: MethodThreading,
     },
 

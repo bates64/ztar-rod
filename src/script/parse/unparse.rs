@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use itertools::Itertools;
 use super::ast::*;
 use super::super::Scope;
@@ -43,14 +44,14 @@ impl Unparse for Statement {
             Statement::VarAssign { identifier, expression } =>
                 format!("{} = {}",
                     identifier.unparse(scope),
-                    expression.unparse(scope),
+                    expression.into_inner().unparse(scope),
                 ),
 
             Statement::VarDeclare { identifier, datatype, expression } => match datatype.into_inner() {
                 DataType::Any => match expression {
                     Some(expression) => format!("var {} = {}",
                         identifier.unparse(scope),
-                        expression.unparse(scope),
+                        expression.into_inner().unparse(scope),
                     ),
                     None => format!("var {}",
                         identifier.unparse(scope),
@@ -60,7 +61,7 @@ impl Unparse for Statement {
                     Some(expression) => format!("var {}: {} = {}",
                         identifier.unparse(scope),
                         datatype.unparse(scope),
-                        expression.unparse(scope),
+                        expression.into_inner().unparse(scope),
                     ),
                     None => format!("var {}: {}",
                         identifier.unparse(scope),
@@ -152,7 +153,8 @@ impl Unparse for Expression {
                     }
                 }
 
-                format!("{}", maybe_ptr)
+                // It's an int. Format it as signed.
+                format!("{}", unsafe { std::mem::transmute::<u32, i32>(maybe_ptr) })
             },
             Expression::LiteralFloat(f) => format!("{}", f),
             Expression::LiteralBool(b)  => format!("{}", b),
@@ -232,11 +234,11 @@ impl Unparse for Vec<Statement> {
 }
 
 // Argument list
-impl Unparse for Vec<Expression> {
+impl Unparse for Vec<RefCell<Expression>> {
     fn unparse(self, scope: &Scope) -> String {
         self
             .into_iter()
-            .map(|arg| arg.unparse(scope))
+            .map(|arg| arg.into_inner().unparse(scope))
             .join(", ")
     }
 }
