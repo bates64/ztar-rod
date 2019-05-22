@@ -9,6 +9,7 @@ pub enum DataType {
     Bool,
     Fun(Vec<DataType>),
     Asm(Vec<DataType>),
+    // TODO: custom structs and enums
 }
 
 impl Display for DataType {

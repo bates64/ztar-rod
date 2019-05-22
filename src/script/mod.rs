@@ -16,8 +16,8 @@ pub fn decompile_map(map: Map, _rom: &mut Rom) -> Result<String, Error> {
     let mut declarations = Vec::new();
 
     // Bring global methods into scope
-    for (ptr, name, ty) in globals::generate() {
-        scope.insert_ptr(ptr, name.to_string(), ty);
+    for (ptr, name, ty) in &*globals::METHODS {
+        scope.insert_ptr(*ptr, name.to_string(), ty.clone());
     }
 
     {
