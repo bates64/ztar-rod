@@ -1,6 +1,19 @@
 use lazy_static::lazy_static;
 use super::DataType::{self, *};
 
+pub static GAMEBYTE_STR:   &'static str = "gamebyte";
+pub static AREABYTE_STR:   &'static str = "areabyte";
+pub static MAPWORD_STR:    &'static str = "mapword";
+pub static FUNWORD_STR:    &'static str = "word";
+
+pub static GAMEFLAG_STR:   &'static str = "gameflag";
+pub static AREAFLAG_STR:   &'static str = "areaflag";
+pub static MAPFLAG_STR:    &'static str = "mapflag";
+pub static FUNFLAG_STR:    &'static str = "flag";
+
+pub static FLAGARRAY_STR:  &'static str = "flags";
+pub static ARRAY_STR:      &'static str = "array";
+
 lazy_static! {
     pub static ref METHODS: [(u32, &'static str, DataType); 10] = [
 

@@ -9,7 +9,7 @@ mod globals;
 pub mod parse;
 
 use datatype::*;
-use parse::{ast::{Declaration, IdentifierOrPointer}, Unparse};
+use parse::{ast::*, Unparse};
 
 pub fn decompile_map(map: Map, _rom: &mut Rom) -> Result<String, Error> {
     let mut scope        = Scope::new();
@@ -27,14 +27,25 @@ pub fn decompile_map(map: Map, _rom: &mut Rom) -> Result<String, Error> {
         scope.insert_ptr(loc.into(), "main".to_string(), DataType::Fun(vec![]));
 
         // Decompile the bytecode
-        declarations.push(Declaration::Fun {
+        let mut decl = Declaration::Fun {
             name:      IdentifierOrPointer::Pointer(loc.into()),
             arguments: Vec::new(),
             block:     bc.decompile()?,
-        })
+        };
+
+        // TODO: type inference here
 
         // TODO: decompile pointers within
-        // TODO: type inference
+
+        // TODO: type inference here
+
+        for mut block in decl.inner_blocks_mut() {
+            fix_call_arg_capture(&mut block, &scope)?
+        }
+
+        // TODO: type inference here
+
+        declarations.push(decl);
     }
 
     // Unparse everything
@@ -45,6 +56,63 @@ pub fn decompile_map(map: Map, _rom: &mut Rom) -> Result<String, Error> {
     }
 
     Ok(out)
+}
+
+/// Paper Mario function calls capture their environment -- that is, they take
+/// every single FunWord/FunFlag as an argument by default. This fixes method
+/// calls to do just that depending on the function signature defined in the
+/// given Scope. This fn expects that all function signatures are correctly
+/// defined in-scope.
+///
+/// For example, entry_walk takes a single argument, so the following:
+///
+///     callback = myscript
+///     entry_walk()
+///
+/// Would be transformed into:
+///
+///     callback = myscript
+///     entry_walk(callback)
+///
+/// Note that this transformation should only be applied to decompiled ASTs, not
+/// those the user gives us; this should be a missing-method-arg error.
+fn fix_call_arg_capture(block: &mut Vec<Statement>, scope: &Scope) -> Result<(), Error> {
+    for stmt in block.iter_mut() {
+        if let Statement::MethodCall { method, arguments, .. } = stmt {
+            // Lookup the method signature.
+            let datatype = match method {
+                IdentifierOrPointer::Identifier(Identifier(name)) =>
+                    scope.lookup_name(name),
+
+                 // Look-up the pointer - if it has a name, use the name instead
+                IdentifierOrPointer::Pointer(ptr) => match scope.lookup_ptr(*ptr) {
+                    Some(name) => scope.lookup_name(name),
+                    None       => None,
+                },
+            };
+
+            // Only functions capture - asm methods take args normally.
+            if let Some(DataType::Fun(argument_types)) = datatype {
+                assert_eq!(arguments.len(), 0);
+
+                for (n, _) in argument_types.iter().enumerate() {
+                    // TODO: see if FunFlags should be captured if the arg type
+                    //       is DataType::Bool
+
+                    let name = format!("{}_{:X}", globals::FUNWORD_STR, n);
+
+                    arguments.push(Expression::Identifier(Identifier(name)));
+                }
+            }
+        }
+
+        // Fix inner blocks, too.
+        for mut inner_block in stmt.inner_blocks_mut() {
+            fix_call_arg_capture(&mut inner_block, &scope)?;
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Fail)]

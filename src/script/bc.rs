@@ -1,12 +1,18 @@
 use std::mem::transmute;
 use std::convert::TryInto;
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashSet};
 use failure_derive::*;
 use num_enum::{TryFromPrimitive, IntoPrimitive};
+use super::datatype::DataType;
 use super::parse::ast::*;
+use super::globals::*;
 
 #[derive(Debug, Clone)]
-pub struct Bytecode(VecDeque<Operation>);
+pub struct Bytecode {
+    data: VecDeque<Operation>,
+    seen_identifiers: HashSet<u32>,
+}
+
 pub type Operation = (Opcode, Vec<Arg>);
 
 impl Bytecode {
@@ -25,7 +31,10 @@ impl Bytecode {
                     data.push_back((op, args));
 
                     if let Opcode::End = op {
-                        return Bytecode(data);
+                        return Bytecode {
+                            data,
+                            seen_identifiers: HashSet::new(),
+                        };
                     }
                 },
                 None => panic!("unknown opcode: {:02X}", opcode),
@@ -38,7 +47,7 @@ impl Bytecode {
         loop {
             // See if we've reached the end
             if let (Opcode::End, _) = self.peek_op()? {
-                return if self.0.len() > 1 {
+                return if self.data.len() > 1 {
                     // There's still data left after the End opcode :/
                     Err(Error::UnexpectedEnd)
                 } else {
@@ -48,24 +57,24 @@ impl Bytecode {
             }
 
             // Decode and consume the next statement
-            stmts.push(self.consume_stmt()?);
+            stmts.append(&mut self.decompile_op()?);
         }
     }
 
     fn consume_op(&mut self) -> Result<Operation, Error> {
-        self.0.pop_front().ok_or(Error::MissingEnd)
+        self.data.pop_front().ok_or(Error::MissingEnd)
     }
 
     fn peek_op(&self) -> Result<&Operation, Error> {
-        self.0.get(0).ok_or(Error::MissingEnd)
+        self.data.get(0).ok_or(Error::MissingEnd)
     }
 
-    fn consume_stmt(&mut self) -> Result<Statement, Error> {
+    fn decompile_op(&mut self) -> Result<Vec<Statement>, Error> {
         let (opcode, opargs) = self.consume_op()?;
         match opcode {
             Opcode::IfEq  | Opcode::IfNe  | Opcode::IfLt    | Opcode::IfGt |
             Opcode::IfLte | Opcode::IfGte | Opcode::IfAndNz | Opcode::IfAndZ
-            => Ok(Statement::If {
+            => Ok(vec![Statement::If {
                 condition: Expression::Operation {
                     lhs: Box::new(opargs.get(0)
                         .ok_or_else(|| Error::MissingArg(opcode, 0))?
@@ -89,7 +98,7 @@ impl Bytecode {
                             (Opcode::EndIf, _) => break,
 
                             // Consume it!! >:D
-                            _ => stmts.push(self.consume_stmt()?),
+                            _ => stmts.append(&mut self.decompile_op()?),
                         };
                     }
                     stmts
@@ -102,14 +111,14 @@ impl Bytecode {
                                 self.consume_op()?;
                                 break
                             },
-                            _ => stmts.push(self.consume_stmt()?),
+                            _ => stmts.append(&mut self.decompile_op()?),
                         };
                     }
                     stmts
                 },
-            }),
+            }]),
 
-            Opcode::Switch | Opcode::SwitchConst => Ok(Statement::Switch {
+            Opcode::Switch | Opcode::SwitchConst => Ok(vec![Statement::Switch {
                 expression: opargs.get(0)
                     .ok_or_else(|| Error::MissingArg(opcode, 0))?
                     .into_expression(),
@@ -144,7 +153,7 @@ impl Bytecode {
                                         (Opcode::CaseDefault, _) |
                                         (Opcode::EndSwitch, _)   => break,
 
-                                        _ => stmts.push(self.consume_stmt()?),
+                                        _ => stmts.append(&mut self.decompile_op()?),
                                     };
                                 }
 
@@ -179,19 +188,51 @@ impl Bytecode {
                     }
                     cases
                 },
-            }),
+            }]),
 
-            Opcode::SetInt | Opcode::SetRef | Opcode::SetFloat => Ok(Statement::VarAssign {
-                identifier: opargs.get(0)
-                    .ok_or_else(|| Error::MissingArg(opcode, 0))?
-                    .into_identifier()
-                    .ok_or_else(|| Error::BadArg(opcode, 0))?,
-                expression: opargs.get(1)
+            Opcode::SetInt | Opcode::SetRef | Opcode::SetFloat => {
+                let identifier_arg = opargs.get(0)
+                    .ok_or_else(|| Error::MissingArg(opcode, 0))?;
+                let identifier = identifier_arg.into_identifier()
+                    .ok_or_else(|| Error::BadArg(opcode, 0))?;
+
+                let expression = opargs.get(1)
                     .ok_or_else(|| Error::MissingArg(opcode, 1))?
-                    .into_expression(),
-            }),
+                    .into_expression();
 
-            Opcode::Call | Opcode::ExecWait | Opcode::Exec => Ok(Statement::MethodCall {
+                // If we haven't seen the identifier yet, declare it.
+                if !self.seen_identifiers.contains(&identifier_arg.0) {
+                    self.seen_identifiers.insert(identifier_arg.0);
+
+                    // Only declare identifiers that this function owns.
+                    match identifier_arg.kind() {
+                        ArgKind::FunWord => return Ok(vec![Statement::VarDeclare {
+                            datatype: match opcode {
+                                // Floats are *always* floats, but bytecode ints
+                                // are sometimes pointers or some other datatype.
+                                // We'll leave detecting that to type inference.
+                                Opcode::SetFloat => DataType::Float,
+                                _                => DataType::Any,
+                            },
+                            identifiers: vec![identifier],
+                            expression: Some(expression),
+                        }]),
+
+                        ArgKind::FunFlag => return Ok(vec![Statement::VarDeclare {
+                            datatype: DataType::Bool,
+                            identifiers: vec![identifier],
+                            expression: Some(expression),
+                        }]),
+
+                        _ => (),
+                    };
+                }
+
+                // If we've reached here, it's just assignment; no declaration needed.
+                Ok(vec![Statement::VarAssign { identifier, expression }])
+            },
+
+            Opcode::Call | Opcode::ExecWait | Opcode::Exec => Ok(vec![Statement::MethodCall {
                 method: opargs.get(0)
                     .ok_or_else(|| Error::MissingArg(opcode, 0))?
                     .into_ident_or_ptr()
@@ -204,8 +245,8 @@ impl Bytecode {
                     Opcode::Exec => MethodThreading::Yes,
                     _            => MethodThreading::No,
                 },
-            }),
-            Opcode::ExecRet => Ok(Statement::MethodCall {
+            }]),
+            Opcode::ExecRet => Ok(vec![Statement::MethodCall {
                 method: opargs.get(0)
                     .ok_or_else(|| Error::MissingArg(opcode, 0))?
                     .into_ident_or_ptr()
@@ -218,9 +259,9 @@ impl Bytecode {
                     .ok_or_else(|| Error::MissingArg(opcode, 1))?
                     .into_identifier()
                     .ok_or_else(|| Error::BadArg(opcode, 1))?),
-            }),
+            }]),
 
-            Opcode::Wait | Opcode::WaitSeconds => Ok(Statement::Wait {
+            Opcode::Wait | Opcode::WaitSeconds => Ok(vec![Statement::Wait {
                 time: opargs.get(0)
                     .ok_or_else(|| Error::MissingArg(opcode, 0))?
                     .into_expression(),
@@ -229,24 +270,24 @@ impl Bytecode {
                     Opcode::WaitSeconds => TimeUnit::Seconds,
                     _ => unreachable!(),
                 },
-            }),
+            }]),
 
-            Opcode::Label => Ok(Statement::Label {
+            Opcode::Label => Ok(vec![Statement::Label {
                 name: opargs.get(0)
                     .ok_or_else(|| Error::MissingArg(opcode, 0))?
                     .into_int()
                     .ok_or_else(|| Error::BadArg(opcode, 0))?
                     .to_string(),
-            }),
-            Opcode::Goto => Ok(Statement::Goto {
+            }]),
+            Opcode::Goto => Ok(vec![Statement::Goto {
                 label_name: opargs.get(0)
                     .ok_or_else(|| Error::MissingArg(opcode, 0))?
                     .into_int()
                     .ok_or_else(|| Error::BadArg(opcode, 0))?
                     .to_string(),
-            }),
+            }]),
 
-            Opcode::Return => Ok(Statement::Return),
+            Opcode::Return => Ok(vec![Statement::Return]),
 
             Opcode::End => Err(Error::UnexpectedEnd),
             _           => Err(Error::UnimplementedOpcode(opcode)),
@@ -335,19 +376,6 @@ pub enum ArgKind {
     GameFlag, AreaFlag, MapFlag, FunFlag,
     FlagArrayIndex, ArrayIndex,
 }
-
-static GAMEBYTE_STR:   &'static str = "gamebyte";
-static AREABYTE_STR:   &'static str = "areabyte";
-static MAPWORD_STR:    &'static str = "mapword";
-static FUNWORD_STR:    &'static str = "word";
-
-static GAMEFLAG_STR:   &'static str = "gameflag";
-static AREAFLAG_STR:   &'static str = "areaflag";
-static MAPFLAG_STR:    &'static str = "mapflag";
-static FUNFLAG_STR:    &'static str = "flag";
-
-static FLAGARRAY_STR:  &'static str = "flags";
-static ARRAY_STR:      &'static str = "array";
 
 impl Arg {
     pub fn into_expression(self) -> Expression {

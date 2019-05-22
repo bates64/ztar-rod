@@ -1,5 +1,10 @@
 pub use super::super::datatype::DataType;
 
+pub trait InnerBlocks {
+    fn inner_blocks(&self) -> Vec<&Vec<Statement>>;
+    fn inner_blocks_mut(&mut self) -> Vec<&mut Vec<Statement>>;
+}
+
 #[derive(Debug, Clone)]
 pub struct Script(Vec<Declaration>);
 
@@ -10,6 +15,20 @@ pub enum Declaration {
         arguments: Vec<(Identifier, DataType)>,
         block:     Vec<Statement>,
     },
+}
+
+impl InnerBlocks for Declaration {
+    fn inner_blocks(&self) -> Vec<&Vec<Statement>> {
+        match self {
+            Declaration::Fun { block, .. } => vec![block],
+        }
+    }
+
+    fn inner_blocks_mut(&mut self) -> Vec<&mut Vec<Statement>> {
+        match self {
+            Declaration::Fun { block, .. } => vec![block],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +67,32 @@ pub enum Statement {
         expression: Expression,
         cases:      Vec<(Case, Vec<Statement>)>,
     },
+}
+
+impl InnerBlocks for Statement {
+    fn inner_blocks(&self) -> Vec<&Vec<Statement>> {
+        match self {
+            Statement::If { block_true, block_false, .. } =>
+                vec![block_true, block_false],
+
+            Statement::Switch { cases, .. } =>
+                cases.iter().map(|(_, block)| block).collect(),
+
+            _ => vec![],
+        }
+    }
+
+    fn inner_blocks_mut(&mut self) -> Vec<&mut Vec<Statement>> {
+        match self {
+            Statement::If { block_true, block_false, .. } =>
+                vec![block_true, block_false],
+
+            Statement::Switch { cases, .. } =>
+                cases.iter_mut().map(|(_, block)| block).collect(),
+
+            _ => vec![],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
