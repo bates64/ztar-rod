@@ -6,7 +6,7 @@ pub struct Script(Vec<Declaration>);
 #[derive(Debug, Clone)]
 pub enum Declaration {
     Fun {
-        name:      Identifier,
+        name:      IdentifierOrPointer,
         arguments: Vec<(Identifier, DataType)>,
         block:     Vec<Statement>,
     },
@@ -31,9 +31,9 @@ pub enum Statement {
     },
 
     MethodCall {
-        method:    Method,
+        method:    IdentifierOrPointer,
         arguments: Vec<Expression>,
-        threading: MethodThreadType,
+        threading: MethodThreading,
     },
 
     Wait { time: Expression, unit: TimeUnit },
@@ -67,13 +67,7 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone)]
-pub enum Method {
-    Identifier(Identifier),
-    Pointer(u32),
-}
-
-#[derive(Debug, Clone)]
-pub enum MethodThreadType {
+pub enum MethodThreading {
     No,                 // method()
     Yes,                // thread method()
     Assign(Identifier), // var = thread method()
@@ -103,7 +97,12 @@ pub enum Operator {
     Eq, Ne, Gt, Lt, Gte, Lte,
     BitAndZ, BitAndNz,
     And, Or, Not,
-    CaseDefault,
+}
+
+#[derive(Debug, Clone)]
+pub enum IdentifierOrPointer {
+    Identifier(Identifier),
+    Pointer(u32),
 }
 
 #[derive(Debug, Clone)]

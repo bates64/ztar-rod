@@ -3,15 +3,7 @@ use std::convert::TryInto;
 use std::collections::VecDeque;
 use failure_derive::*;
 use num_enum::{TryFromPrimitive, IntoPrimitive};
-use super::datatype::DataType;
 use super::parse::ast::*;
-
-/*
-static ARG_NAMES: [&str; 0x10] = [
-    "a", "b", "c", "d", "e", "f", "g", "h" , "i", "j", "k", "l", "m", "n", "o", "p"
-];
-const INDENT_STRING: &str = "    ";
-*/
 
 #[derive(Debug, Clone)]
 pub struct Bytecode(VecDeque<Operation>);
@@ -202,27 +194,27 @@ impl Bytecode {
             Opcode::Call | Opcode::ExecWait | Opcode::Exec => Ok(Statement::MethodCall {
                 method: opargs.get(0)
                     .ok_or_else(|| Error::MissingArg(opcode, 0))?
-                    .into_method()
+                    .into_ident_or_ptr()
                     .ok_or_else(|| Error::BadArg(opcode, 0))?,
                 arguments: opargs.iter()
                     .skip(1)
                     .map(|oparg| oparg.into_expression())
                     .collect(),
                 threading: match opcode {
-                    Opcode::Exec => MethodThreadType::Yes,
-                    _            => MethodThreadType::No,
+                    Opcode::Exec => MethodThreading::Yes,
+                    _            => MethodThreading::No,
                 },
             }),
             Opcode::ExecRet => Ok(Statement::MethodCall {
                 method: opargs.get(0)
                     .ok_or_else(|| Error::MissingArg(opcode, 0))?
-                    .into_method()
+                    .into_ident_or_ptr()
                     .ok_or_else(|| Error::BadArg(opcode, 0))?,
                 arguments: opargs.iter()
                     .skip(2)
                     .map(|oparg| oparg.into_expression())
                     .collect(),
-                threading: MethodThreadType::Assign(opargs.get(1)
+                threading: MethodThreading::Assign(opargs.get(1)
                     .ok_or_else(|| Error::MissingArg(opcode, 1))?
                     .into_identifier()
                     .ok_or_else(|| Error::BadArg(opcode, 1))?),
@@ -401,9 +393,9 @@ impl Arg {
         }
     }
 
-    pub fn into_method(self) -> Option<Method> {
+    pub fn into_ident_or_ptr(self) -> Option<IdentifierOrPointer> {
         match self.kind() {
-            ArgKind::Int => Some(Method::Pointer(self.0)),
+            ArgKind::Int => Some(IdentifierOrPointer::Pointer(self.0)),
             _ => None,
         }
     }

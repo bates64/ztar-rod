@@ -1,4 +1,7 @@
 pub mod ast;
+mod unparse;
+
+pub use unparse::Unparse;
 
 // TODO
 

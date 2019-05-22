@@ -1,7 +1,5 @@
 use std::fmt::{self, Display, Formatter};
-
-mod priomap;
-pub use priomap::PrioMap;
+use itertools::Itertools;
 
 #[derive(Debug, Clone)]
 pub enum DataType {
@@ -31,6 +29,5 @@ fn join<T: Display>(slice: &[T], sep: &str) -> String {
     slice
         .iter()
         .map(|item| format!("{}", item))
-        .collect::<Vec<String>>()
         .join(sep)
 }

@@ -1,0 +1,237 @@
+use itertools::Itertools;
+use super::ast::*;
+use super::super::Scope;
+
+/// Trait for structs that can produce a script sourcecode equivalent of
+/// themselves, given a Scope to look-up pointers.
+pub trait Unparse {
+    fn unparse(self, scope: &Scope) -> String;
+}
+
+/// Adds indentation to each line of the given String.
+fn indent(string: String) -> String {
+    string
+        .lines()
+        .map(|line| format!("    {}", line)) // 4 spaces
+        .join("\n")
+}
+
+impl Unparse for Declaration {
+    fn unparse(self, scope: &Scope) -> String {
+        match self {
+            Declaration::Fun { name, arguments, block } =>
+                format!("fun {}({}) {{\n{}\n}}",
+                    name.unparse(scope),
+                    arguments
+                        .into_iter()
+                        .map(|(id, ty)| format!("{}: {}", id.unparse(scope), ty.unparse(scope)))
+                        .join(", "),
+                    indent(block.unparse(scope)),
+                ),
+        }
+    }
+}
+
+impl Unparse for Statement {
+    fn unparse(self, scope: &Scope) -> String {
+        match self {
+            Statement::Return => "return".to_string(),
+
+            Statement::Label { name } => format!("label .{}", name),
+            Statement::Goto { label_name } => format!("goto .{}", label_name),
+
+            Statement::VarAssign { identifier, expression } =>
+                format!("{} = {}",
+                    identifier.unparse(scope),
+                    expression.unparse(scope),
+                ),
+
+            Statement::VarDeclare { datatype, identifiers, expression } => match expression {
+                Some(expression) => format!("{} {} = {}",
+                    datatype.unparse(scope),
+                    identifiers
+                        .into_iter()
+                        .map(|ident| ident.unparse(scope))
+                        .join(", "),
+                    expression.unparse(scope),
+                ),
+                None => format!("{} {}",
+                    datatype.unparse(scope),
+                    identifiers
+                        .into_iter()
+                        .map(|ident| ident.unparse(scope))
+                        .join(", "),
+                ),
+            },
+
+            Statement::MethodCall { method, arguments, threading } => match threading {
+                MethodThreading::Assign(ident) => format!("{} = thread {}({})",
+                    ident.unparse(scope),
+                    method.unparse(scope),
+                    arguments.unparse(scope),
+                ),
+                MethodThreading::Yes => format!("thread {}({})",
+                    method.unparse(scope),
+                    arguments.unparse(scope),
+                ),
+                MethodThreading::No => format!("{}({})",
+                    method.unparse(scope),
+                    arguments.unparse(scope),
+                ),
+            },
+
+            Statement::Wait { time, unit } => match unit {
+                TimeUnit::Frames  => format!("wait {}",     time.unparse(scope)),
+                TimeUnit::Seconds => format!("waitsecs {}", time.unparse(scope)),
+            },
+
+            Statement::If { condition, block_true, mut block_false } => match block_false.len() {
+                // No else block
+                0 => format!("if {} {{\n{}\n}}",
+                    condition.unparse(scope),
+                    indent(block_true.unparse(scope)),
+                ),
+
+                // Only one stmt in else block
+                1 => match block_false[0] {
+                    // 'else if' contraction
+                    Statement::If { .. } => format!("if {} {{\n{}\n}} else {}",
+                        condition.unparse(scope),
+                        indent(block_true.unparse(scope)),
+                        block_false.pop().unwrap().unparse(scope), // pop because we require ownership
+                    ),
+
+                    // Treat else block as normal
+                    _ => format!("if {} {{\n{}\n}} else {{\n{}\n}}",
+                        condition.unparse(scope),
+                        indent(block_true.unparse(scope)),
+                        indent(block_false.unparse(scope)),
+                    ),
+                },
+
+                // Has else block
+                _ => format!("if {} {{\n{}\n}} else {{\n{}\n}}",
+                    condition.unparse(scope),
+                    indent(block_true.unparse(scope)),
+                    indent(block_false.unparse(scope)),
+                ),
+            },
+
+            Statement::Switch { expression, cases } => format!("switch {} {{\n{}\n}}",
+                expression.unparse(scope),
+                indent(cases
+                    .into_iter()
+                    .map(|(case, block)| match case {
+                        Case::Default => format!("default {{\n{}\n}}", indent(block.unparse(scope))),
+                        Case::Test { operator, against } => format!("case {} {} {{\n{}\n}}",
+                            operator.unparse(scope),
+                            against.unparse(scope),
+                            indent(block.unparse(scope)),
+                        ),
+                    })
+                    .join("\n")
+                ),
+            ),
+        }
+    }
+}
+
+impl Unparse for Expression {
+    fn unparse(self, scope: &Scope) -> String {
+        match self {
+            Expression::LiteralInt(maybe_ptr) => {
+                if maybe_ptr & 0xFFFF_0000 == 0x8024_0000 {
+                    // It's probably a script pointer; try to give it its name
+                    if let Some(name) = scope.lookup_ptr(maybe_ptr) {
+                        return name.to_string();
+                    }
+                }
+
+                format!("{}", maybe_ptr)
+            },
+            Expression::LiteralFloat(f) => format!("{}", f),
+            Expression::LiteralBool(b)  => format!("{}", b),
+
+            Expression::Identifier(id)      => id.unparse(scope),
+            Expression::ArrayIndex(id, idx) => format!("{}[{}]", id.unparse(scope), idx),
+
+            Expression::Operation { lhs, op, rhs } => format!("{} {} {}",
+                lhs.unparse(scope),
+                op.unparse(scope),
+                rhs.unparse(scope),
+            ),
+        }
+    }
+}
+
+impl Unparse for IdentifierOrPointer {
+    fn unparse(self, scope: &Scope) -> String {
+        match self {
+            IdentifierOrPointer::Identifier(ident) => ident.unparse(scope),
+
+             // Look-up the pointer - if it has a name, use the name instead
+            IdentifierOrPointer::Pointer(ptr) => match scope.lookup_ptr(ptr) {
+                Some(name) => name.to_string(),
+                None       => format!("{}", ptr),
+            },
+        }
+    }
+}
+
+impl Unparse for Operator {
+    fn unparse(self, _: &Scope) -> String {
+        match self {
+            Operator::Add => "+".to_string(),
+            Operator::Sub => "-".to_string(),
+            Operator::Mul => "*".to_string(),
+            Operator::Div => "/".to_string(),
+            Operator::Mod => "%".to_string(),
+
+            Operator::Eq  => "==".to_string(),
+            Operator::Ne  => "!=".to_string(),
+            Operator::Lt  => "<".to_string(),
+            Operator::Gt  => ">".to_string(),
+            Operator::Lte => ">=".to_string(),
+            Operator::Gte => "<=".to_string(),
+
+            Operator::BitAndZ  => "&".to_string(),
+            Operator::BitAndNz => "!&".to_string(),
+
+            Operator::And => "and".to_string(),
+            Operator::Or  => "or".to_string(),
+            Operator::Not => "not".to_string(),
+        }
+    }
+}
+
+impl Unparse for Identifier {
+    fn unparse(self, _: &Scope) -> String {
+        self.0
+    }
+}
+
+impl Unparse for DataType {
+    fn unparse(self, _: &Scope) -> String {
+        format!("{}", self)
+    }
+}
+
+// Block
+impl Unparse for Vec<Statement> {
+    fn unparse(self, scope: &Scope) -> String {
+        self
+            .into_iter()
+            .map(|stmt| stmt.unparse(scope))
+            .join("\n")
+    }
+}
+
+// Argument list
+impl Unparse for Vec<Expression> {
+    fn unparse(self, scope: &Scope) -> String {
+        self
+            .into_iter()
+            .map(|arg| arg.unparse(scope))
+            .join(", ")
+    }
+}
