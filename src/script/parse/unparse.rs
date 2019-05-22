@@ -179,7 +179,7 @@ impl Unparse for IdentifierOrPointer {
              // Look-up the pointer - if it has a name, use the name instead
             IdentifierOrPointer::Pointer(ptr) => match scope.lookup_ptr(ptr) {
                 Some(name) => name.to_string(),
-                None       => format!("{}", ptr),
+                None       => format!("0x{:X}", ptr),
             },
         }
     }
