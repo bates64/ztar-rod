@@ -162,17 +162,18 @@ impl Bytecode {
                                 let mut stmts = Vec::new();
                                 loop {
                                     match self.peek_op()? {
-                                        (Opcode::CaseEq, _)      |
-                                        (Opcode::CaseAndEq, _)   |
-                                        (Opcode::CaseOrEq, _)    |
-                                        (Opcode::CaseNe, _)      |
-                                        (Opcode::CaseLt, _)      |
-                                        (Opcode::CaseGt, _)      |
-                                        (Opcode::CaseLte, _)     |
-                                        (Opcode::CaseGte, _)     |
-                                        (Opcode::CaseAndZ, _)    |
-                                        (Opcode::CaseDefault, _) |
-                                        (Opcode::EndSwitch, _)   => break,
+                                        (Opcode::CaseEq, _)       |
+                                        (Opcode::CaseAndEq, _)    |
+                                        (Opcode::CaseOrEq, _)     |
+                                        (Opcode::CaseNe, _)       |
+                                        (Opcode::CaseLt, _)       |
+                                        (Opcode::CaseGt, _)       |
+                                        (Opcode::CaseLte, _)      |
+                                        (Opcode::CaseGte, _)      |
+                                        (Opcode::CaseAndZ, _)     |
+                                        (Opcode::CaseDefault, _)  |
+                                        (Opcode::EndCaseGroup, _) |
+                                        (Opcode::EndSwitch, _)    => break,
 
                                         _ => stmts.append(&mut self.decompile_op()?),
                                     };
@@ -200,6 +201,11 @@ impl Bytecode {
                                 break
                             },
 
+                            // Ignore EndCaseGroup ops, we don't need them,
+                            (Opcode::EndCaseGroup, _) => {
+                                self.consume_op()?;
+                            },
+
                             // A couple vanilla functions have weird, malformed
                             // switches that are not followed by any cases (and
                             // lack an EndSwitch). Thus, we just exit the switch
@@ -210,6 +216,49 @@ impl Bytecode {
                     cases
                 },
             }]),
+
+            Opcode::Thread => Ok(vec![Statement::Thread {
+                block: {
+                    let mut stmts = Vec::new();
+                    loop {
+                        match self.peek_op()? {
+                            (Opcode::EndThread, _) => {
+                                self.consume_op()?;
+                                break
+                            },
+
+                            _ => stmts.append(&mut self.decompile_op()?),
+                        };
+                    }
+                    stmts
+                },
+            }]),
+
+            Opcode::Loop => Ok(vec![Statement::Loop {
+                times: match opargs.get(0)
+                    .ok_or_else(|| Error::MissingArg(opcode, 0))?
+                    .into_expression() {
+                        Expression::LiteralInt(0) => LoopTimes::Infinite,
+                        expression => LoopTimes::Expression(expression),
+                    },
+                block: {
+                    let mut stmts = Vec::new();
+                    loop {
+                        match self.peek_op()? {
+                            (Opcode::EndLoop, _) => {
+                                self.consume_op()?;
+                                break
+                            },
+
+                            _ => stmts.append(&mut self.decompile_op()?),
+                        };
+                    }
+                    stmts
+                },
+            }]),
+
+            Opcode::BreakLoop => Ok(vec![Statement::BreakLoop]),
+            Opcode::BreakCase => Ok(vec![Statement::BreakCase]),
 
             Opcode::SetInt | Opcode::SetRef | Opcode::SetFloat => {
                 let identifier_arg = opargs.get(0)
@@ -232,7 +281,7 @@ impl Bytecode {
                                 // Floats are *always* floats, but bytecode ints
                                 // are sometimes pointers or some other datatype.
                                 // We'll leave detecting that to type inference.
-                                Opcode::SetFloat => DataType::Float,
+                                //Opcode::SetFloat => DataType::Float,
                                 _                => DataType::Any,
                             }),
                             identifier,
@@ -250,8 +299,34 @@ impl Bytecode {
                 }
 
                 // If we've reached here, it's just assignment; no declaration needed.
-                Ok(vec![Statement::VarAssign { identifier, expression }])
+                Ok(vec![Statement::VarAssign {
+                    operator: AssignmentOperator::Eq,
+                    identifier,
+                    expression,
+                }])
             },
+
+            Opcode::AddInt | Opcode::AddFloat |
+            Opcode::SubInt | Opcode::SubFloat |
+            Opcode::MulInt | Opcode::MulFloat |
+            Opcode::DivInt | Opcode::DivFloat |
+            Opcode::ModInt => Ok(vec![Statement::VarAssign {
+                operator: match opcode {
+                    Opcode::AddInt | Opcode::AddFloat => AssignmentOperator::Add,
+                    Opcode::SubInt | Opcode::SubFloat => AssignmentOperator::Sub,
+                    Opcode::MulInt | Opcode::MulFloat => AssignmentOperator::Mul,
+                    Opcode::DivInt | Opcode::DivFloat => AssignmentOperator::Div,
+                    Opcode::ModInt                    => AssignmentOperator::Mod,
+                    _ => unreachable!(),
+                },
+                identifier: opargs.get(0)
+                    .ok_or_else(|| Error::MissingArg(opcode, 0))?
+                    .into_identifier()
+                    .ok_or_else(|| Error::BadArg(opcode, 0))?,
+                expression: RefCell::new(opargs.get(1)
+                    .ok_or_else(|| Error::MissingArg(opcode, 1))?
+                    .into_expression()),
+            }]),
 
             Opcode::Call | Opcode::ExecWait | Opcode::Exec => Ok(vec![Statement::MethodCall {
                 method: opargs.get(0)
@@ -265,6 +340,10 @@ impl Bytecode {
                 threading: match opcode {
                     Opcode::Exec => MethodThreading::Yes,
                     _            => MethodThreading::No,
+                },
+                bc_is_func: match opcode {
+                    Opcode::Call => false,
+                    _            => true,
                 },
             }]),
             Opcode::ExecRet => Ok(vec![Statement::MethodCall {
@@ -280,6 +359,7 @@ impl Bytecode {
                     .ok_or_else(|| Error::MissingArg(opcode, 1))?
                     .into_identifier()
                     .ok_or_else(|| Error::BadArg(opcode, 1))?),
+                bc_is_func: true,
             }]),
 
             Opcode::Wait | Opcode::WaitSeconds => Ok(vec![Statement::Wait {
@@ -308,6 +388,79 @@ impl Bytecode {
                     .to_string(),
             }]),
 
+            Opcode::Bind => Ok(vec![{
+                /*
+                00000080 = FloorTouch
+                00080000 = FloorAbove
+                00000800 = FloorPressA
+                00000200 = FloorJump
+
+                00000400 = WallTouch
+                00000040 = WallPush
+                00000100 = WallPressA
+                00001000 = WallHammer
+
+                00040000 = CeilingTouch
+
+                % 00002000  ???
+                % 00004000  ???
+                % 00008000  ???
+
+                00100000 = PointBomb
+
+                00010000 = GameFlagSet
+                00020000 = AreaFlagSet
+                */
+
+                // TODO
+                assert_eq!(opargs.get(3).unwrap().into_int().unwrap(), 1); // item list
+                assert_eq!(opargs.get(4).unwrap().into_int().unwrap(), 0); // *out (?)
+
+                let trigger_obj = || opargs.get(2)
+                    .ok_or_else(|| Error::MissingArg(opcode, 2))
+                    .and_then(|arg|
+                        arg
+                        .into_trigger_obj()
+                        .ok_or_else(|| Error::BadArg(opcode, 2))
+                    );
+
+                Statement::Bind {
+                    dispatch: opargs.get(0)
+                        .ok_or_else(|| Error::MissingArg(opcode, 0))?
+                        .into_ident_or_ptr()
+                        .ok_or_else(|| Error::BadArg(opcode, 0))?,
+                    trigger: match opargs.get(1)
+                        .ok_or_else(|| Error::MissingArg(opcode, 1))?
+                        .as_unsigned() {
+                            0x00000080 => Trigger::FloorTouch(trigger_obj()?),
+                            0x00080000 => Trigger::FloorAbove(trigger_obj()?),
+                            0x00000800 => Trigger::FloorInteract(trigger_obj()?),
+                            0x00000200 => Trigger::FloorJump(trigger_obj()?),
+
+                            0x00000400 => Trigger::WallTouch(trigger_obj()?),
+                            0x00000040 => Trigger::WallPush(trigger_obj()?),
+                            0x00000100 => Trigger::WallInteract(trigger_obj()?),
+                            0x00001000 => Trigger::WallHammer(trigger_obj()?),
+
+                            0x00040000 => Trigger::CeilingTouch(trigger_obj()?),
+
+                            0x00100000 => Trigger::Bomb(opargs.get(2)
+                                .ok_or_else(|| Error::MissingArg(opcode, 2))?
+                                .into_ident_or_ptr()
+                                .ok_or_else(|| Error::BadArg(opcode, 2))?),
+
+                            0x00010000 |
+                            0x00020000 => Trigger::FlagChange(opargs.get(2)
+                                .ok_or_else(|| Error::MissingArg(opcode, 2))?
+                                .into_identifier()
+                                .ok_or_else(|| Error::BadArg(opcode, 2))?),
+
+                            t => return Err(Error::UnknownTrigger(t)),
+                        },
+                }
+            }]),
+            Opcode::Unbind => Ok(vec![Statement::Unbind]),
+
             Opcode::Return => Ok(vec![Statement::Return]),
 
             Opcode::End => Err(Error::UnexpectedEnd),
@@ -332,6 +485,9 @@ pub enum Error {
 
     #[fail(display = "opcode {:?} has bad arg{}", _0, _1)]
     BadArg(Opcode, u8),
+
+    #[fail(display = "unknown bind trigger event 0x{:X}", _0)]
+    UnknownTrigger(u32),
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
@@ -445,7 +601,10 @@ impl Arg {
     pub fn into_ident_or_ptr(self) -> Option<IdentifierOrPointer> {
         match self.kind() {
             ArgKind::Int => Some(IdentifierOrPointer::Pointer(self.0)),
-            _ => None,
+            _ => match self.into_identifier() {
+                Some(ident) => Some(IdentifierOrPointer::Identifier(ident)),
+                None => None,
+            },
         }
     }
 
@@ -456,8 +615,25 @@ impl Arg {
         }
     }
 
-    fn as_signed(self) -> i32 {
+    pub fn into_trigger_obj(self) -> Option<TriggerObj> {
+        match self.kind() {
+            ArgKind::Int => Some({
+                if self.0 & 0xFFFFFF00 == 0x00004000 {
+                    TriggerObj::Entity(self.0 as u8) // Truncate.
+                } else {
+                    TriggerObj::Collider(self.0)
+                }
+            }),
+            _ => None,
+        }
+    }
+
+    pub fn as_signed(self) -> i32 {
         unsafe { transmute(self.0) }
+    }
+
+    pub fn as_unsigned(self) -> u32 {
+        self.0
     }
 
     #[allow(clippy::if_same_then_else)]

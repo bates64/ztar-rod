@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 use itertools::Itertools;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataType {
     Any,
     Int,

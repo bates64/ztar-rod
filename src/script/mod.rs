@@ -1,8 +1,8 @@
-use std::fmt::Write;
 use std::collections::{VecDeque, HashMap};
 use std::cell::RefCell;
 use failure_derive::*;
-use crate::rom::{Rom, Map};
+use itertools::Itertools;
+use crate::rom::{Rom, Map, loc::Dma};
 
 pub mod datatype;
 pub mod bc;
@@ -11,49 +11,98 @@ pub mod parse;
 
 use datatype::*;
 use parse::{ast::*, Unparse};
+use bc::Bytecode;
 
-pub fn decompile_map(map: Map, _rom: &mut Rom) -> Result<String, Error> {
-    let mut scope        = Scope::new();
-    let mut declarations = Vec::new();
+struct DecompEnv<'a> {
+    scope: &'a mut Scope,
+    rom: &'a mut Rom,
+    declarations: &'a mut Vec<Declaration>,
+    dma: &'a Dma,
+}
+
+pub fn decompile_map(map: Map, rom: &mut Rom) -> Result<String, Error> {
+    let mut scope = Scope::new();
 
     // Bring global methods into scope
     for (ptr, name, ty) in &*globals::METHODS {
         scope.insert_ptr(*ptr, name.to_string(), ty.clone());
     }
 
-    {
-        let (loc, bc) = map.main_fun;
+    let mut declarations = Vec::new();
 
-        // Main function takes no arguments
-        scope.insert_ptr(loc.into(), "main".to_string(), DataType::Fun(vec![]));
+    let (main_loc, main_bc) = map.main_fun;
+    scope.insert_ptr(main_loc.into(), "main".to_string(), DataType::Fun(vec![]));
 
-        // Decompile the bytecode
-        let mut decl = Declaration::Fun {
-            name:      IdentifierOrPointer::Pointer(loc.into()),
-            arguments: Vec::new(),
-            block:     bc.decompile(&mut scope)?,
-        };
+    let mut env = DecompEnv {
+        scope: &mut scope,
+        rom,
+        declarations: &mut declarations,
+        dma: &map.dma,
+    };
 
-        for mut block in decl.inner_blocks_mut() {
-            // TODO: decompile pointers within, followed by a type inference pass
+    decompile_fun("main".to_string(), main_bc, &mut env)?;
 
-            fix_call_arg_capture(&mut block, &scope)?;
-            infer_datatypes(&mut block, &mut scope)?;
-        }
-
-        // TODO: replace decl.arguments with the types that were inferred
-
-        declarations.push(decl);
-    }
+    // In-place transformations
+    declarations.dedup_by_key(|declaration| match declaration {
+        Declaration::Fun { name, .. } => name.clone(),
+    });
 
     // Unparse everything
-    let mut out = String::new();
+    Ok(declarations
+        .into_iter()
+        .rev()
+        .map(|declaration| declaration.unparse(&scope))
+        .join("\n\n"))
+}
 
-    for declaration in declarations.into_iter() {
-        writeln!(out, "{}", declaration.unparse(&scope)).unwrap();
+fn decompile_fun(name: String, bc: Bytecode, env: &mut DecompEnv) -> Result<(), Error> {
+    env.scope.push();
+
+    println!("decompiling function: {}", name);
+
+    let mut block = bc.decompile(env.scope)?;
+
+    fix_call_arg_capture(&mut block, env.scope)?;
+    infer_datatypes(&mut block, env.scope)?;
+
+    // Search for more structs we have to decompile, if any
+    for (vaddr, name, datatype) in env.scope.pop().unwrap() {
+        if let Some(vaddr) = vaddr {
+            match datatype {
+                DataType::Fun(args) => {
+                    env.scope.insert_ptr(
+                        vaddr,
+                        name.clone(),
+                        DataType::Fun(args),
+                    );
+
+                    println!("reading bytecode: {}", name);
+                    env.rom.seek(env.dma.loc_at_vaddr(vaddr));
+                    decompile_fun(name, Bytecode::read(env.rom), env)?;
+                },
+
+                DataType::Asm(args) => {
+                    env.scope.insert_ptr(
+                        vaddr,
+                        name,
+                        DataType::Asm(args),
+                    );
+
+                    // TODO
+                },
+
+                _ => (),
+            }
+        }
     }
 
-    Ok(out)
+    env.declarations.push(Declaration::Fun {
+        name:      IdentifierOrPointer::Identifier(Identifier(name)),
+        arguments: Vec::new(), // TODO: lookup
+        block,
+    });
+
+    Ok(())
 }
 
 /// Paper Mario function calls capture their environment -- that is, they take
@@ -113,7 +162,7 @@ fn infer_datatypes(block: &mut Vec<Statement>, mut scope: &mut Scope) -> Result<
         // We only insert inferred types into scope after the interator
         // finishes, because we perform lookups in there and the borrow checker
         // would scream at us for mutating it while we had an immutable ref.
-        let mut inferred: Vec<(String, DataType)> = Vec::new();
+        let mut inferred: Vec<(Option<u32>, String, DataType)> = Vec::new();
 
         // We iterate in reverse so we can figure out the types before we see their
         // declaration statement (once we do see it, we update its type).
@@ -128,45 +177,52 @@ fn infer_datatypes(block: &mut Vec<Statement>, mut scope: &mut Scope) -> Result<
                             DataType::Any => {
                                 datatype.replace(inferred_datatype.clone());
 
-                                if let DataType::Bool = inferred_datatype {
-                                    // Update int literal to a bool literal.
-                                    if let Some(expression) = expression {
-                                        if let Expression::LiteralInt(v) = expression.clone().into_inner() {
-                                            expression.replace(Expression::LiteralBool(v == 1));
-                                        }
+                                // Update expression literal to the inferred
+                                // type, if any.
+                                if let Some(expression) = expression {
+                                    if let Some((ptr, name, ty)) =
+                                        update_literal(expression, inferred_datatype) {
+                                        inferred.push((Some(ptr), name, ty));
                                     }
                                 }
                             },
 
-                            // User declared the type but we inferred its use
-                            // as some other type. Error.
-                            datatype => return Err(Error::VarDeclareTypeMismatch {
-                                identifier:        name.clone(),
-                                declared_datatype: datatype,
-                                inferred_datatype: inferred_datatype.clone(),
-                            }),
+                            datatype_inner => if inferred_datatype.clone() == datatype_inner {
+                                // Ok, put `datatype_inner` back.
+                                datatype.replace(datatype_inner);
+                            } else {
+                                // User declared the type but we inferred its
+                                // use as some other type.
+                                println!("warning: {}", Error::VarDeclareTypeMismatch {
+                                    identifier:        name.clone(),
+                                    declared_datatype: datatype_inner,
+                                    inferred_datatype: inferred_datatype.clone(),
+                                });
+                            },
                         },
 
                         // The variable is declared here but isn't in the current
                         // scope, so add it to the scope after this pass.
-                        None => inferred.push((name.clone(), match expression {
+                        None => inferred.push((None, name.clone(), match expression {
                             Some(expression) => expression.borrow().infer_datatype(&scope),
                             None             => DataType::Any,
                         })),
                     }
                 },
 
-                // Infer left-hand-type by the right-hand-type of var assignments.
-                Statement::VarAssign { identifier: Identifier(name), expression } => {
+                Statement::VarAssign { identifier: Identifier(name), expression, .. } => {
                     match scope.lookup_name(name) {
                         // We only need to infer Any (i.e. unknown) types.
-                        Some(DataType::Any)
-                            => inferred.push((name.clone(), expression.borrow().infer_datatype(scope))),
+                        Some(DataType::Any) | None => inferred.push((
+                            None,
+                            name.clone(),
+                            expression.borrow().infer_datatype(scope)
+                        )),
 
-                        // Update int literal to bool literal.
-                        Some(DataType::Bool) => {
-                            if let Expression::LiteralInt(v) = expression.clone().into_inner() {
-                                expression.replace(Expression::LiteralBool(v == 1));
+                        // Update float literals
+                        Some(DataType::Float) => {
+                            if let Some((ptr, name, ty)) = update_literal(expression, &DataType::Float) {
+                                inferred.push((Some(ptr), name, ty));
                             }
                         },
 
@@ -174,8 +230,7 @@ fn infer_datatypes(block: &mut Vec<Statement>, mut scope: &mut Scope) -> Result<
                     }
                 },
 
-                // Infer types of method call arguments.
-                Statement::MethodCall { method, arguments, .. } => match method.lookup(scope) {
+                Statement::MethodCall { method, arguments, bc_is_func, .. } => match method.lookup(scope) {
                     Some((_, &DataType::Asm(ref arg_types))) |
                     Some((_, &DataType::Fun(ref arg_types))) => {
                         for (ty, arg) in arg_types.iter().zip(arguments.iter()) {
@@ -185,23 +240,36 @@ fn infer_datatypes(block: &mut Vec<Statement>, mut scope: &mut Scope) -> Result<
                                     // We only need to infer Any (i.e. unknown) types.
                                     if let Some(DataType::Any) = scope.lookup_name(&name) {
                                         // Define the inferred type!
-                                        inferred.push((name.clone(), ty.clone()));
+                                        inferred.push((None, name.clone(), ty.clone()));
                                     }
                                 },
 
-                                // Update int literal to bool literal.
-                                Expression::LiteralInt(v) => {
-                                    if let DataType::Bool = ty {
-                                        arg.replace(Expression::LiteralBool(v == 1));
+                                // Update literal arg to the type it should be.
+                                _ => {
+                                    if let Some((ptr, name, ty)) = update_literal(arg, ty) {
+                                        inferred.push((Some(ptr), name, ty));
                                     }
                                 },
-
-                                _ => (),
                             }
                         }
                     },
 
-                    _ => (),
+                    _ => if let IdentifierOrPointer::Pointer(ptr) = method {
+                        if *ptr & 0xFFFF0000 == 0x80240000 {
+                            // Unknown local method pointer; let's define it.
+
+                            let arguments = arguments
+                                .iter()
+                                .map(|arg_expr| arg_expr.borrow().infer_datatype(scope))
+                                .collect();
+
+                            inferred.push((Some(*ptr), name_method_ptr(*ptr), if *bc_is_func {
+                                DataType::Fun(arguments)
+                            } else {
+                                DataType::Asm(arguments)
+                            }));
+                        }
+                    },
                 },
 
                 _ => (),
@@ -213,23 +281,79 @@ fn infer_datatypes(block: &mut Vec<Statement>, mut scope: &mut Scope) -> Result<
         }
 
         // Define the inferred types in-scope.
-        for (name, datatype) in inferred.into_iter() {
+        for (ptr, name, datatype) in inferred.into_iter() {
             if let DataType::Any = datatype {
                 // ...why is this even here?
                 break
             }
 
-            match scope.insert_name(name, datatype) {
-                Some(DataType::Any) => (),
-                Some(_) => panic!("type inferred but var has a known type already"),
-                None => (),
+            match scope.insert(ptr, name.clone(), datatype.clone()) {
+                Some(DataType::Any) => made_inferences = true,
+                Some(old_datatype) => {
+                    if datatype != old_datatype {
+                        // We accidentally replaced a previous definition.
+                        // Don't do that; undo the insertion.
+                        println!("infer avoided replacing {} ({} -> {})",
+                             name, old_datatype, datatype);
+                        scope.insert(ptr, name, old_datatype);
+                    }
+                },
+                None => made_inferences = true,
             }
-
-            made_inferences = true
         }
     }
 
     Ok(())
+}
+
+/// Replaces a given expression node to `datatype` if it is a literal. Returns
+/// a generated (ptr, name type) expected to be added to scope if the expression
+/// is a raw pointer int literal, updating it to an identifier.
+#[must_use]
+fn update_literal(expr: &RefCell<Expression>, datatype: &DataType) -> Option<(u32, String, DataType)> {
+    match datatype {
+        DataType::Bool => {
+            if let Expression::LiteralInt(v) = expr.clone().into_inner() {
+                expr.replace(Expression::LiteralBool(v == 1));
+            }
+
+            None
+        },
+
+        DataType::Float => {
+            if let Expression::LiteralInt(u) = expr.clone().into_inner() {
+                expr.replace(if u == 0 {
+                    Expression::LiteralFloat(0.0)
+                } else {
+                    let s: i32 = unsafe { std::mem::transmute(u) };
+                    Expression::LiteralFloat(((s + 230000000) as f32) / 1024.0)
+                });
+            }
+
+            None
+        },
+
+        DataType::Fun(_) | DataType::Asm(_) => {
+            if let Expression::LiteralInt(ptr) = expr.clone().into_inner() {
+                if ptr & 0xFFFF0000 == 0x80240000 {
+                    let name = name_method_ptr(ptr);
+
+                    expr.replace(Expression::Identifier(Identifier(name.clone())));
+                    Some((ptr, name, datatype.clone()))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        },
+
+        _ => None,
+    }
+}
+
+fn name_method_ptr(ptr: u32) -> String {
+    format!("dump_{:04X}", ptr & 0x0000FFFF)
 }
 
 #[derive(Debug, Fail)]
@@ -275,9 +399,24 @@ impl Scope {
         self.layers.push_front((HashMap::new(), HashMap::new()));
     }
 
-    /// Removes the current scope mapping and returns it, if any.
-    pub fn pop(&mut self) -> Option<(HashMap<u32, String>, HashMap<String, DataType>)> {
-        self.layers.pop_front()
+    /// Removes all the mappings in the current scope and returns them, if any.
+    pub fn pop(&mut self) -> Option<Vec<(Option<u32>, String, DataType)>> {
+        if let Some((ptr_map, mut type_map)) = self.layers.pop_front() {
+            let mut flat = Vec::new();
+
+            for (ptr, name) in ptr_map.into_iter() {
+                let datatype = type_map.remove(&name).unwrap();
+                flat.push((Some(ptr), name, datatype))
+            }
+
+            for (name, datatype) in type_map.into_iter() {
+                flat.push((None, name, datatype))
+            }
+
+            Some(flat)
+        } else {
+            None
+        }
     }
 
     /// Inserts a (u32 -> String -> DataType) mapping. If the current scope
@@ -292,6 +431,14 @@ impl Scope {
     /// this name mapped, it is updated and its previous datatype returned.
     pub fn insert_name(&mut self, name: String, datatype: DataType) -> Option<DataType> {
         self.layers[0].1.insert(name, datatype)
+    }
+
+    pub fn insert(&mut self, ptr: Option<u32>, name: String, datatype: DataType) -> Option<DataType> {
+        if let Some(ptr) = ptr {
+            self.insert_ptr(ptr, name, datatype)
+        } else{
+            self.insert_name(name, datatype)
+        }
     }
 
     /// Looks-up the name associated with a given pointer.

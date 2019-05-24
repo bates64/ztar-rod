@@ -40,6 +40,7 @@ pub enum Statement {
     Goto  { label_name: String },
 
     VarAssign {
+        operator:   AssignmentOperator,
         identifier: Identifier,
         expression: RefCell<Expression>,
     },
@@ -54,9 +55,21 @@ pub enum Statement {
         method:    IdentifierOrPointer,
         arguments: Vec<RefCell<Expression>>,
         threading: MethodThreading,
+
+        /// For decompiled-bytecode type inference. `Exec` variants have this
+        /// as true, and code from users or `Call` ops have this as false.
+        bc_is_func: bool,
     },
 
     Wait { time: Expression, unit: TimeUnit },
+
+    Bind {
+        trigger:  Trigger,
+        dispatch: IdentifierOrPointer,
+    },
+    Unbind,
+
+    BreakLoop, BreakCase,
 
     If {
         condition:   Expression,
@@ -67,6 +80,15 @@ pub enum Statement {
     Switch {
         expression: Expression,
         cases:      Vec<(Case, Vec<Statement>)>,
+    },
+
+    Thread {
+        block: Vec<Statement>,
+    },
+
+    Loop {
+        times: LoopTimes,
+        block: Vec<Statement>,
     },
 }
 
@@ -79,6 +101,9 @@ impl InnerBlocks for Statement {
             Statement::Switch { cases, .. } =>
                 cases.iter().map(|(_, block)| block).collect(),
 
+            Statement::Thread { block }   => vec![block],
+            Statement::Loop { block, .. } => vec![block],
+
             _ => vec![],
         }
     }
@@ -90,6 +115,9 @@ impl InnerBlocks for Statement {
 
             Statement::Switch { cases, .. } =>
                 cases.iter_mut().map(|(_, block)| block).collect(),
+
+            Statement::Thread { block }   => vec![block],
+            Statement::Loop { block, .. } => vec![block],
 
             _ => vec![],
         }
@@ -169,12 +197,42 @@ pub enum TimeUnit {
 }
 
 #[derive(Debug, Clone)]
+pub enum Trigger {
+    FloorTouch(TriggerObj),
+    FloorAbove(TriggerObj),
+    FloorInteract(TriggerObj),
+    FloorJump(TriggerObj),
+
+    WallTouch(TriggerObj),
+    WallPush(TriggerObj),
+    WallInteract(TriggerObj),
+    WallHammer(TriggerObj),
+
+    CeilingTouch(TriggerObj),
+    Bomb(IdentifierOrPointer), // ptr to (X, Y, Z, RADIUS)
+
+    FlagChange(Identifier), // areaflags and mapflags only
+}
+
+#[derive(Debug, Clone)]
+pub enum TriggerObj {
+    Collider(u32), // TODO: how big are collider ids?
+    Entity(u8),
+}
+
+#[derive(Debug, Clone)]
 pub enum Case {
     Default,
     Test {
         operator: Operator,
         against:  Expression,
     },
+}
+
+#[derive(Debug, Clone)]
+pub enum LoopTimes {
+    Infinite,
+    Expression(Expression),
 }
 
 #[derive(Debug, Clone)]
@@ -189,6 +247,11 @@ pub enum Operator {
 }
 
 #[derive(Debug, Clone)]
+pub enum AssignmentOperator {
+    Eq, Add, Sub, Mul, Div, Mod,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IdentifierOrPointer {
     Identifier(Identifier),
     Pointer(u32),
@@ -211,5 +274,5 @@ impl IdentifierOrPointer {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Identifier(pub String);

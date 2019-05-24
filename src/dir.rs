@@ -51,6 +51,8 @@ impl ModDir {
             create_dir_if_not_exist(&format!("{}/{}", self.root, area.name))?;
 
             for map in area.maps.into_iter().unique_by(|map| map.name.clone()) {
+                println!("-- dumping {} --", map.name);
+
                 // Write script file
                 {
                     let path = format!("{}/{}/{}.script", self.root, area.name, map.name);

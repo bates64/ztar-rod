@@ -38,12 +38,20 @@ impl Unparse for Statement {
         match self {
             Statement::Return => "return".to_string(),
 
-            Statement::Label { name } => format!("label .{}", name),
+            Statement::Label { name } => format!(".{}", name),
             Statement::Goto { label_name } => format!("goto .{}", label_name),
 
-            Statement::VarAssign { identifier, expression } =>
-                format!("{} = {}",
+            Statement::VarAssign { identifier, operator, expression } =>
+                format!("{} {} {}",
                     identifier.unparse(scope),
+                    match operator {
+                        AssignmentOperator::Eq => "=",
+                        AssignmentOperator::Add => "+=",
+                        AssignmentOperator::Sub => "-=",
+                        AssignmentOperator::Mul => "*=",
+                        AssignmentOperator::Div => "/=",
+                        AssignmentOperator::Mod => "%=",
+                    },
                     expression.into_inner().unparse(scope),
                 ),
 
@@ -70,7 +78,7 @@ impl Unparse for Statement {
                 },
             },
 
-            Statement::MethodCall { method, arguments, threading } => match threading {
+            Statement::MethodCall { method, arguments, threading, .. } => match threading {
                 MethodThreading::Assign(ident) => format!("{} = thread {}({})",
                     ident.unparse(scope),
                     method.unparse(scope),
@@ -90,6 +98,15 @@ impl Unparse for Statement {
                 TimeUnit::Frames  => format!("wait {}",     time.unparse(scope)),
                 TimeUnit::Seconds => format!("waitsecs {}", time.unparse(scope)),
             },
+
+            Statement::Bind { trigger, dispatch } => format!("bind {} {}",
+                trigger.unparse(scope),
+                dispatch.unparse(scope)
+            ),
+            Statement::Unbind => "unbind".to_string(),
+
+            Statement::BreakLoop => "breakloop".to_string(),
+            Statement::BreakCase => "breakcase".to_string(),
 
             Statement::If { condition, block_true, mut block_false } => match block_false.len() {
                 // No else block
@@ -138,6 +155,18 @@ impl Unparse for Statement {
                     .join("\n")
                 ),
             ),
+
+            Statement::Thread { block } => format!("thread {{\n{}\n}}",
+                indent(block.unparse(scope))),
+
+            Statement::Loop { block, times } => match times {
+                LoopTimes::Infinite => format!("loop {{\n{}\n}}",
+                    indent(block.unparse(scope))),
+
+                LoopTimes::Expression(expr) => format!("loop {} {{\n{}\n}}",
+                    expr.unparse(scope),
+                    indent(block.unparse(scope)))
+            },
         }
     }
 }
@@ -156,7 +185,7 @@ impl Unparse for Expression {
                 // It's an int. Format it as signed.
                 format!("{}", unsafe { std::mem::transmute::<u32, i32>(maybe_ptr) })
             },
-            Expression::LiteralFloat(f) => format!("{}", f),
+            Expression::LiteralFloat(f) => format!("{:?}", f),
             Expression::LiteralBool(b)  => format!("{}", b),
 
             Expression::Identifier(id)      => id.unparse(scope),
@@ -181,6 +210,35 @@ impl Unparse for IdentifierOrPointer {
                 Some(name) => name.to_string(),
                 None       => format!("0x{:X}", ptr),
             },
+        }
+    }
+}
+
+impl Unparse for Trigger {
+    fn unparse(self, scope: &Scope) -> String {
+        match self {
+            Trigger::FloorTouch(obj)    => format!("floortouch {}", obj.unparse(scope)),
+            Trigger::FloorAbove(obj)    => format!("floorabove {}", obj.unparse(scope)),
+            Trigger::FloorInteract(obj) => format!("floorinteract {}", obj.unparse(scope)),
+            Trigger::FloorJump(obj)     => format!("floorjump {}", obj.unparse(scope)),
+
+            Trigger::WallTouch(obj)     => format!("walltouch {}", obj.unparse(scope)),
+            Trigger::WallPush(obj)      => format!("wallpush {}", obj.unparse(scope)),
+            Trigger::WallInteract(obj)  => format!("wallinteract {}", obj.unparse(scope)),
+            Trigger::WallHammer(obj)    => format!("wallhammer {}", obj.unparse(scope)),
+
+            Trigger::CeilingTouch(obj)  => format!("ceilingtouch {}", obj.unparse(scope)),
+            Trigger::Bomb(ptr)          => format!("bomb {}", ptr.unparse(scope)),
+            Trigger::FlagChange(ident)  => format!("flagchange {}", ident.unparse(scope)),
+        }
+    }
+}
+
+impl Unparse for TriggerObj {
+    fn unparse(self, _: &Scope) -> String {
+        match self {
+            TriggerObj::Collider(id) => format!("{{collider:{}}}", id),
+            TriggerObj::Entity(id)   => format!("{{entity:{}}}", id),
         }
     }
 }
