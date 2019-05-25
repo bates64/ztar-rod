@@ -17,7 +17,7 @@ fn main() {
     static ROM_AMERICA: &'static str = "Paper Mario (U) [!].z64";
     static ROM_EUROPE: &'static str  = "Paper Mario (Europe) (En,Fr,De,Es).z64";
 
-    match File::open(ROM_EUROPE) {
+    match File::open(ROM_AMERICA) {
         Err(_)  => println!("unable to open rom"),
         Ok(rom) => match dump(rom) {
             Err(error) => println!("{}", error),
