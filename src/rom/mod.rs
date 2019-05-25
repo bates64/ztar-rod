@@ -1,83 +1,66 @@
-use std::io::{prelude::*, SeekFrom};
+pub use std::io::{prelude::*, SeekFrom};
+pub use ascii::*;
 use std::fs::File;
-use crate::script::bc::Bytecode;
+use std::fmt;
+use failure::{Error, bail};
+use failure_derive::*;
 
-pub mod loc;
-use loc::*;
+//pub mod loc;
+//use loc::*;
 
-/// Wrapper struct for reading and writing to a ROM file.
+/// Wrapper struct for reading (and, soon, writing) a ROM file.
 pub struct Rom {
     pub file: File,
+    pub region: Region,
+}
+
+pub enum Region {
+    Japan,
+    America,
+    Europe,
+}
+
+impl Region {
+    fn from(byte: u8) -> Option<Region> {
+        match byte {
+            b'J' => Some(Region::Japan),
+            b'E' => Some(Region::America),
+            b'P' => Some(Region::Europe),
+            _    => None,
+        }
+    }
 }
 
 impl Rom {
-    pub fn from(file: File) -> Rom {
-        // TODO fail if little endian
+    pub fn from(mut file: File) -> Result<Rom, Error> {
+        {
+            file.seek(SeekFrom::Start(0x00)).unwrap();
 
-        Rom {
-            file,
-        }
-    }
-
-    /// Seeks to the address of the provided Location.
-    pub fn seek(&mut self, loc: Location) -> &mut Rom {
-        self.file.seek(loc.into()).unwrap();
-        self
-    }
-
-    /// Seeks ahead `n` bytes.
-    pub fn skip(&mut self, n: i64) -> &mut Rom {
-        self.file.seek(SeekFrom::Current(n)).unwrap();
-        self
-    }
-
-    /// Reads a 4-byte unsigned integer.
-    pub fn read_u32(&mut self) -> u32 {
-        let mut buf = [0u8; 4];
-        self.file.read_exact(&mut buf).expect("Unexpected EOF");
-        u32::from_be_bytes(buf)
-    }
-
-    /// Reads a 4-byte float.
-    pub fn read_f32(&mut self) -> f32 {
-        f32::from_bits(self.read_u32())
-    }
-
-    /// Reads a pointer (4 bytes); in the ROM these are stored differently to
-    /// standard `u32`s. Returns `None` for null pointers.
-    pub fn read_ptr(&mut self) -> Option<u32> {
-        let weird = self.read_u32();
-
-        if weird == 0 {
-            None // Null pointer.
-        } else {
-            // Pointers in the rom are weirdly formatted; we must
-            // force an overflow to get the true address from it.
-            Some(weird.wrapping_add(2_147_333_120))
-        }
-    }
-
-    /// Reads a null-terminated string. Panics if the string is invalid ASCII.
-    pub fn read_string(&mut self) -> String {
-        let mut chars = Vec::new();
-
-        loop {
             let mut ch = [0u8];
-            self.file.read_exact(&mut ch).expect("Unexpected EOF");
+            file.read_exact(&mut ch).unwrap();
 
-            // Null-terminator.
-            if ch[0] == 0 {
-                break;
+            if ch[0] != 0x80 {
+                bail!("only big-endian roms are supported (.z64) - try using Tool64 to convert");
             }
-
-            chars.push(ch[0]);
         }
 
-        // ROM strings are ASCII, but UTF-8 is a superset of it so we can use
-        // `from_utf8`.
-        std::str::from_utf8(&chars).expect("Malformed string").to_string()
+        Ok(Rom {
+            region: {
+                file.seek(SeekFrom::Start(0x3E)).unwrap();
+
+                let mut ch = [0u8];
+                file.read_exact(&mut ch).unwrap();
+
+                match Region::from(ch[0]) {
+                    Some(region) => region,
+                    _  => bail!("only JP, USA, and PAL roms are supported"),
+                }
+            },
+            file,
+        })
     }
 
+    /*
     /// Reads an `Area`. Panics if data is missing or malformed.
     pub fn read_area(&mut self) -> Area {
         let map_count = self.read_u32();
@@ -152,58 +135,133 @@ impl Rom {
             flags,
         }
     }
+    */
 }
 
-#[derive(Debug, Clone)]
-pub struct Area {
-    pub name: String,
-    pub maps: Vec<Map>,
+pub trait RomRead {
+    fn read(rom: &mut Rom) -> Result<Self, ReadError> where Self: Sized;
 }
 
-#[derive(Debug, Clone)]
-pub struct Map {
-    // Assets (TODO)
-    //pub shape: Shape,
-    //pub hit: Hit,
-
-    // Areatable
-    pub name: String,
-    pub background: Option<String>,
-    pub flags: u32, // TODO maybe use a bitfield enum for this
-
-    // Header
-    pub dma: Dma,
-    pub entrances: Vec<Entrance>,
-    pub tattle: MapTattle,
-    pub init_asm: Option<Location>, // TODO
-    pub main_fun: (Location, Bytecode),
+pub trait RomReadLen {
+    /// Should always read exactly `len` bytes.
+    fn read_len(rom: &mut Rom, len: usize) -> Result<Self, ReadError> where Self: Sized;
 }
 
-/// Map entrance position.
-#[derive(Debug, Clone)]
-pub struct Entrance {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub yaw: f32,
+#[derive(Debug, Fail)]
+pub enum ReadError {
+    #[fail(display = "unexpected end of file")]
+    Eof,
+
+    #[fail(display = "bad ASCII string: {}", _0)]
+    BadAscii(#[fail(cause)] ToAsciiCharError),
+
+    #[fail(display = "{}", _0)]
+    Io(#[fail(cause)] std::io::Error),
 }
 
-/// Goombario's tattle text. Can be dynamically returned by an asm method.
-#[derive(Debug, Clone)]
-pub enum MapTattle {
-    Id(u16, u16),
-    Asm(Location),
+impl From<ToAsciiCharError> for ReadError {
+    fn from(error: ToAsciiCharError) -> ReadError {
+        ReadError::BadAscii(error)
+    }
 }
 
-impl From<Location> for MapTattle {
-    fn from(loc: Location) -> MapTattle {
-        let addr = loc.offset;
-        if is_vaddr(addr) {
-            MapTattle::Asm(loc)
-        } else {
-            let major = (addr & 0xFFFF_0000) >> 16;
-            let minor = addr & 0x0000_FFFF;
-            MapTattle::Id(major as u16, minor as u16)
+impl From<std::io::Error> for ReadError {
+    fn from(error: std::io::Error) -> ReadError {
+        ReadError::Io(error)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Pointer {
+    Address(u32),
+    NullPtr,
+}
+
+impl fmt::Display for Pointer {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Pointer::Address(addr) => write!(fmt, "{:#010X}", addr),
+            Pointer::NullPtr       => write!(fmt, "nullptr"),
         }
+    }
+}
+
+impl fmt::Debug for Pointer {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Pointer::Address(addr) => write!(fmt, "Address({:#010X})", addr),
+            Pointer::NullPtr      => write!(fmt, "NullPtr"),
+        }
+    }
+}
+
+impl RomRead for u32 {
+    fn read(rom: &mut Rom) -> Result<Self, ReadError> {
+        let mut buf = [0u8; 4];
+        rom.file.read_exact(&mut buf).or(Err(ReadError::Eof))?;
+        Ok(u32::from_be_bytes(buf))
+    }
+}
+
+impl RomRead for f32 {
+    fn read(rom: &mut Rom) -> Result<Self, ReadError> {
+        Ok(f32::from_bits(u32::read(rom)?))
+    }
+}
+
+impl RomRead for Pointer {
+    fn read(rom: &mut Rom) -> Result<Self, ReadError> {
+        let weird = u32::read(rom)?;
+
+        Ok(if weird == 0 {
+            Pointer::NullPtr
+        } else {
+            // Pointers in the rom are weirdly formatted; we must
+            // force an overflow to get the true address from it.
+            Pointer::Address(weird.wrapping_add(2_147_333_120))
+        })
+    }
+}
+
+impl RomRead for AsciiString {
+    fn read(rom: &mut Rom) -> Result<Self, ReadError> {
+        let mut string = AsciiString::new();
+
+        loop {
+            let mut ch = [0u8];
+            rom.file.read_exact(&mut ch).or(Err(ReadError::Eof))?;
+
+            // Null-terminator.
+            if ch[0] == 0 {
+                break;
+            }
+
+            string.push(AsciiChar::from(ch[0])?);
+        }
+
+        Ok(string)
+    }
+}
+
+impl RomReadLen for AsciiString {
+    fn read_len(rom: &mut Rom, len: usize) -> Result<Self, ReadError> {
+        let mut string = AsciiString::new();
+        let mut terminated = false;
+
+        for _ in 0..len {
+            let mut ch = [0u8];
+            rom.file.read_exact(&mut ch).or(Err(ReadError::Eof))?;
+
+            // Null-terminator.
+            if ch[0] == 0 {
+                terminated = true;
+            }
+
+            if !terminated {
+                string.push(AsciiChar::from(ch[0])?);
+            }
+        }
+
+        Ok(string)
     }
 }

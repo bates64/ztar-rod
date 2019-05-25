@@ -1,25 +1,38 @@
-#![allow(dead_code, clippy::unreadable_literal)]
+#![allow(clippy::unreadable_literal)]
 
 mod rom;
-mod script;
-mod dir;
+mod data;
+//mod script;
+mod mod_dir;
 
+use std::path::Path;
 use std::fs::File;
-use rom::Rom;
-use dir::ModDir;
+use rom::*;
+use mod_dir::ModDir;
+use data::map::asset_table::AssetTable;
+//use dir::ModDir;
 
 fn main() {
-    match File::open("Paper Mario (U) [!].z64") {
-        Err(_) => println!("Unable to open 'Paper Mario (U) [!].z64'. Please copy a clean rom to the current working-directory and retry!"),
-        Ok(file) => {
-            let mut rom = Rom::from(file);
-            let mod_dir = ModDir::open("./mod").unwrap();
+    static ROM_JAPAN: &'static str   = "Mario Story (J) [!].z64";
+    static ROM_AMERICA: &'static str = "Paper Mario (U) [!].z64";
+    static ROM_EUROPE: &'static str  = "Paper Mario (Europe) (En,Fr,De,Es).z64";
 
-            mod_dir.clear().unwrap();
-            match mod_dir.dump(&mut rom) {
-                Ok(_)    => println!("Dump to mod directory successful"),
-                Err(err) => println!("{}", err),
-            }
+    match File::open(ROM_EUROPE) {
+        Err(_)  => println!("unable to open rom"),
+        Ok(rom) => match dump(rom) {
+            Err(error) => println!("{}", error),
+            Ok(())     => (),
         }
     }
+}
+
+fn dump(rom: File) -> Result<(), failure::Error> {
+    let mut rom = Rom::from(rom)?;
+    let mod_dir = ModDir::open(Path::new("./mod"));
+
+    mod_dir.reset().unwrap();
+
+    AssetTable::read(&mut rom)?.dump(&mod_dir)?;
+
+    Ok(())
 }
