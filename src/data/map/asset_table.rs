@@ -6,6 +6,7 @@ use crate::rom::*;
 use crate::mod_dir::ModDir;
 use crate::data::yay0;
 use crate::data::color::Palette;
+use super::shape::Shape;
 
 fn asset_table_addr(rom: &Rom) -> u32 {
     match rom.region {
@@ -41,6 +42,10 @@ impl AssetTable {
                     writer.write_chunk(png::chunk::PLTE, &palette.1.rgb()[..]).unwrap();
                     writer.write_chunk(png::chunk::tRNS, &palette.1.alpha()[..]).unwrap();
                     writer.write_image_data(&raster.1).unwrap();
+                },
+
+                AssetData::Shape { shape } => {
+                    // TODO
                 },
 
                 AssetData::Unknown { bytes } => {
@@ -80,6 +85,10 @@ pub enum AssetData {
         height:  u16,
         raster:  (u32, Vec<u8>),
         palette: (u32, Palette),
+    },
+
+    Shape {
+        shape: Shape,
     },
 
     Unknown {
@@ -142,6 +151,8 @@ impl RomRead for Asset {
                         Palette::from_rgba16(&bytes[palette_addr .. palette_addr + 256 * 2])
                     }),
                 }
+            } else if name.as_str().ends_with("_shape") {
+                AssetData::Shape { shape: Shape::parse(bytes)? }
             } else {
                 AssetData::Unknown { bytes }
             },

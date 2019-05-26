@@ -99,4 +99,21 @@ impl Color {
             a: if (s & 1) == 1 { 0xFF } else { 0x00 },
         }
     }
+
+    pub fn into_rgba32(self) -> u32 {
+        let mut color = u32::from(self.a);
+        color |= u32::from(self.r) << 24;
+        color |= u32::from(self.g) << 16;
+        color |= u32::from(self.b) << 8;
+        color
+    }
+
+    pub fn from_rgba32(s: u32) -> Color {
+        Color {
+            r: (s >> 24) as u8,
+            g: (s >> 16) as u8,
+            b: (s >> 8)  as u8,
+            a: s         as u8,
+        }
+    }
 }
