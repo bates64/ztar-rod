@@ -9,7 +9,7 @@ disappeared.
 # usage
 
 You will need:
-- [Rust](https://rustup.rs/)
+- [Rust](https://rustup.rs/) version `1.34.0` or higher
 - A USA, PAL, or JP _Paper Mario_ ROM:
   * `Paper Mario (U) [!].z64`
   * `Paper Mario (Europe) (End,Fr,De,Es).z64`
