@@ -154,7 +154,7 @@ impl Unparse for Expression {
                 }
 
                 // It's an int. Format it as signed.
-                format!("{}", unsafe { std::mem::transmute::<u32, i32>(maybe_ptr) })
+                format!("{}", maybe_ptr as i32)
             },
             Expression::LiteralFloat(f) => format!("{}", f),
             Expression::LiteralBool(b)  => format!("{}", b),

@@ -1,4 +1,3 @@
-use std::mem::transmute;
 use std::convert::TryInto;
 use std::collections::{VecDeque, HashSet};
 use std::cell::RefCell;
@@ -457,7 +456,7 @@ impl Arg {
     }
 
     fn as_signed(self) -> i32 {
-        unsafe { transmute(self.0) }
+        self.0 as i32
     }
 
     #[allow(clippy::if_same_then_else)]
