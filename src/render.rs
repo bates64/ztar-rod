@@ -109,8 +109,8 @@ impl Camera {
 
     pub fn dolly(&mut self, amt: f32) {
         self.pos += amt
-            * Matrix3::from_angle_x(self.pitch)
             * Matrix3::from_angle_y(self.yaw)
+            * Matrix3::from_angle_x(self.pitch)
             * Vector3::unit_z();
     }
     pub fn truck(&mut self, amt: f32) {
