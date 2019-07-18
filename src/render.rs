@@ -36,8 +36,8 @@ implement_vertex!(Vertex, xyz, rgba, uv);
 
 #[derive(Clone, Copy)]
 struct BgVertex {
-    xy: [i8; 2],
-    uv: [i8; 2],
+    xy: [f32; 2],
+    uv: [f32; 2],
 }
 implement_vertex!(BgVertex, xy, uv);
 
@@ -58,10 +58,10 @@ impl Scene {
         let bg_tex = mod_dir.read_bg(&map.bg_name)?;
         #[rustfmt::skip]
         let bg = VertexBuffer::new(facade, &[
-            BgVertex { xy: [ 1, -1], uv: [1, 0] },
-            BgVertex { xy: [-1, -1], uv: [0, 0] },
-            BgVertex { xy: [ 1,  1], uv: [1, 1] },
-            BgVertex { xy: [-1,  1], uv: [0, 1] },
+            BgVertex { xy: [ 1.0, -1.0], uv: [1.0, 0.0] },
+            BgVertex { xy: [-1.0, -1.0], uv: [0.0, 0.0] },
+            BgVertex { xy: [ 1.0,  1.0], uv: [1.0, 1.0] },
+            BgVertex { xy: [-1.0,  1.0], uv: [0.0, 1.0] },
         ]).unwrap();
         textures.push(prepare_texture(facade, bg_tex));
 
