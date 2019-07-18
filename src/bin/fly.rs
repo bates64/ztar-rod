@@ -61,41 +61,33 @@ use std::ops::Deref;
 impl State {
     fn handle(&mut self, display: &glium::backend::glutin::Display, ev: &Event) {
         match ev {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => self.closed = true,
-            Event::WindowEvent {
-                event: WindowEvent::KeyboardInput { input, .. },
-                ..
-            } => match input.state {
-                ElementState::Pressed => self.held |= held_bits_from_scancode(input.scancode),
-                ElementState::Released => self.held &= !held_bits_from_scancode(input.scancode),
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => self.closed = true,
+                WindowEvent::Refresh => self.is_clean = false,
+
+                WindowEvent::KeyboardInput { input, .. } => match input.state {
+                    ElementState::Pressed => self.held |= held_bits_from_scancode(input.scancode),
+                    ElementState::Released => self.held &= !held_bits_from_scancode(input.scancode),
+                },
+
+                WindowEvent::MouseInput {
+                    state,
+                    button: MouseButton::Right,
+                    ..
+                } => {
+                    self.mouse_down = match state {
+                        ElementState::Pressed => true,
+                        ElementState::Released => false,
+                    };
+
+                    let gl_window = display.gl_window();
+                    let win: &Window = gl_window.window();
+
+                    win.grab_cursor(self.mouse_down).unwrap();
+                    win.hide_cursor(self.mouse_down);
+                }
             },
-            Event::WindowEvent {
-                event:
-                    WindowEvent::MouseInput {
-                        state,
-                        button: MouseButton::Right,
-                        ..
-                    },
-                ..
-            } => {
-                self.mouse_down = match state {
-                    ElementState::Pressed => true,
-                    ElementState::Released => false,
-                };
 
-                let gl_window = display.gl_window();
-                let win: &Window = gl_window.window();
-
-                win.grab_cursor(self.mouse_down).unwrap();
-                win.hide_cursor(self.mouse_down);
-            }
-            Event::WindowEvent {
-                event: WindowEvent::Refresh,
-                ..
-            } => self.is_clean = false,
             Event::DeviceEvent {
                 event: DeviceEvent::MouseMotion { delta },
                 ..
