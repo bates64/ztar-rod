@@ -7,7 +7,7 @@
 /bin/ztar-rod.exe
 /src/script/grammar.rs
 **/*.rs.bk
-/steal/*.json
+/steal/map
 /steal/image
 /steal/StarRod.jar
 /steal/patch/**/*.class

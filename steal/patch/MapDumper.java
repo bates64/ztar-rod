@@ -1,6 +1,8 @@
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
+import java.io.PrintWriter;
 
 import editor.map.Map;
 import editor.map.MutablePoint;
@@ -10,13 +12,42 @@ import editor.map.mesh.Vertex;
 import editor.map.shape.Model;
 import editor.map.tree.MapObjectTreeModel;
 
-public class DumpMap {
+public class MapDumper {
 
     public static void main(String[] args) throws ClassNotFoundException, IOException {
-        FileInputStream file_s = new FileInputStream(args[0]);
-        ObjectInputStream obj_s = new ObjectInputStream(file_s);
-        Map map = (Map) obj_s.readObject();
+        File[] maps = new File("map/src").listFiles();
 
+        for (int i = 0; i < maps.length; i++) {
+            File file = maps[i];
+
+            String name = file.getName();
+            if (!name.endsWith(".map")) {
+                continue;
+            }
+
+            System.out.print("\r" + i + " / " + maps.length + " : " + name + "                ");
+
+            FileInputStream file_s = new FileInputStream(file);
+            ObjectInputStream obj_s = new ObjectInputStream(file_s);
+            Map map = (Map) obj_s.readObject();
+
+            String outName = name.substring(0, name.length() - 3) + "json";
+            PrintWriter out = new PrintWriter("map/src/" + outName, "UTF-8");
+            MapDumper dumper = new MapDumper(out);
+            dumper.dump(map);
+        }
+
+        System.out.println("\ndone");
+    }
+
+
+    private PrintWriter out;
+
+    MapDumper(PrintWriter stream) {
+        out = stream;
+    }
+
+    public void dump(Map map) throws IOException {
         C c = new C("{");
         c.item("\"bg_name\":\"" + map.bgName + "\"");
         c.item("\"meshes\":");
@@ -40,9 +71,11 @@ public class DumpMap {
         models.end("]");
 
         c.end("}");
+
+        out.flush();
     }
 
-    public static void printTriangles(Iterable<Triangle> ts) {
+    public void printTriangles(Iterable<Triangle> ts) throws IOException {
         C c = new C("[");
 
         for (Triangle t : ts) {
@@ -58,7 +91,7 @@ public class DumpMap {
         c.end("]");
     }
 
-    public static void printVertex(Vertex v) {
+    public void printVertex(Vertex v) throws IOException {
         v.useLocal = false;
 
         C o = new C("{");
@@ -99,23 +132,23 @@ public class DumpMap {
     //     }
     //     c.end("]");
 
-    private static class C {
+    private class C {
         private boolean hasItem;
 
-        C(String start) {
-            System.out.print(start);
+        C(String start) throws IOException {
+            out.write(start);
             hasItem = false;
         }
 
-        public void item() {
-            if (hasItem) System.out.print(",");
+        public void item() throws IOException {
+            if (hasItem) out.write(",");
             else hasItem = true;
         }
-        public void item(int i) { item(); System.out.print(i); }
-        public void item(String e) { item(); System.out.print(e); }
+        public void item(int i) throws IOException { item("" + i); }
+        public void item(String e) throws IOException { item(); out.write(e); }
 
-        public void end(String end) {
-            System.out.print(end);
+        public void end(String end) throws IOException {
+            out.write(end);
         }
     }
 
