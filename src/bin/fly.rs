@@ -5,8 +5,10 @@ use glium::glutin::{
 use glium::{Display, Surface};
 use std::env;
 use std::fs::File;
+use std::path::Path;
 use std::thread::sleep;
 use std::time::Duration;
+use ztar_rod::mod_dir::ModDir;
 use ztar_rod::render::{Camera, Map, Renderer, Scene};
 
 #[derive(Default)]
@@ -18,10 +20,10 @@ struct State {
 }
 
 fn main() {
-    let filename = env::args().nth(1).unwrap();
-    let file = File::open(&filename).unwrap();
-
-    let map: Map = serde_json::from_reader(file).unwrap();
+    let map_name = env::args()
+        .nth(1)
+        .unwrap_or_else(|| panic!("run as cargo --bin fly <map name>"));
+    let mod_dir = ModDir::open(Path::new("./mod"));
 
     let mut events_loop = EventsLoop::new();
     let wb = WindowBuilder::new()
@@ -31,7 +33,7 @@ fn main() {
     let display = Display::new(wb, cb, &events_loop).unwrap();
 
     let renderer = Renderer::new(&display);
-    let scene = Scene::new(&display, map);
+    let scene = Scene::new(&display, &mod_dir, &map_name).unwrap();
     let mut state = State::default();
 
     while !state.closed {

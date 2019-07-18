@@ -9,8 +9,9 @@ use glium::{
 };
 use std::borrow::Cow;
 use std::collections::hash_map::{Entry, HashMap};
-use std::fs::{self, File};
-use std::io::BufReader;
+use std::io;
+
+use crate::mod_dir::ModDir;
 
 #[derive(Deserialize, Serialize)]
 pub struct Map(pub Vec<Mesh>);
@@ -36,33 +37,51 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn new<F: Facade>(facade: &F, mut map: Map) -> Self {
+    pub fn new<F: Facade>(facade: &F, mod_dir: &ModDir, map: &str) -> Result<Self, io::Error> {
+        let map = mod_dir.read_map(map)?;
+
         let mut textures_map = HashMap::new();
         let mut textures = Vec::new();
         let mut meshes = Vec::new();
 
-        for mut mesh in map.0.drain(..) {
+        let empty_image = RawImage2d::<u8> {
+            data: Cow::Borrowed(&[255, 255, 255, 255]),
+            width: 1,
+            height: 1,
+            format: ClientFormat::U8U8U8U8,
+        };
+        let empty_tex = Texture2d::new(facade, empty_image).unwrap();
+        textures_map.insert("", 0);
+        textures.push(empty_tex);
+
+        for mesh in &map.0 {
             let tex_id;
 
-            match textures_map.entry(mesh.texture) {
+            match textures_map.entry(&mesh.texture) {
                 Entry::Occupied(entry) => tex_id = *entry.get(),
+
                 Entry::Vacant(entry) => {
+                    let decoded = mod_dir.read_tex(entry.key())?.to_rgba();
+                    let dimensions = decoded.dimensions();
+                    let image = RawImage2d::from_raw_rgba_reversed(&decoded.into_raw(), dimensions);
+                    let texture = Texture2d::new(facade, image).unwrap();
+
                     tex_id = textures.len();
-                    textures.push(locate_texture(facade, entry.key()));
+                    textures.push(texture);
                     entry.insert(tex_id);
                 }
             }
 
             let mut flat_triangles = Vec::new();
-            for tri in mesh.triangles.drain(..) {
-                flat_triangles.extend(&tri);
+            for tri in &mesh.triangles {
+                flat_triangles.extend(tri);
             }
             let buffer = VertexBuffer::new(facade, &flat_triangles).unwrap();
 
             meshes.push((tex_id, buffer));
         }
 
-        Scene { textures, meshes }
+        Ok(Scene { textures, meshes })
     }
 
     pub fn small<F: Facade>(facade: &F) -> Self {
@@ -80,40 +99,6 @@ impl Scene {
             meshes: vec![(0, buffer)],
         }
     }
-}
-
-fn locate_texture<F: Facade>(facade: &F, tex: &str) -> Texture2d {
-    let image = if tex == "" {
-        // a plain, blank texture: just one white pixel
-        RawImage2d {
-            data: Cow::Borrowed(&[255, 255, 255, 255]),
-            width: 1,
-            height: 1,
-            format: ClientFormat::U8U8U8U8,
-        }
-    } else {
-        let area = tex.split('_').nth(0).unwrap();
-        let proper_location = format!("mod/img/tex/{}.png", &tex);
-        let stolen_location = format!("steal/image/texture/{}_tex/{}.png", &area, &tex);
-
-        let reader = File::open(&proper_location)
-            .or_else(|_| {
-                fs::copy(&stolen_location, &proper_location)?;
-                File::open(&proper_location)
-            })
-            .map(BufReader::new)
-            .unwrap_or_else(|_| {
-                panic!(
-                    r#"could not locate texture "{}"; copy the Star Rod directory "image" to "steal""#,
-                    tex
-                )
-            });
-        let decoded = image::load(reader, image::PNG).unwrap().to_rgba();
-        let dimensions = decoded.dimensions();
-        RawImage2d::from_raw_rgba_reversed(&decoded.into_raw(), dimensions)
-    };
-
-    Texture2d::new(facade, image).unwrap()
 }
 
 #[derive(Debug)]
