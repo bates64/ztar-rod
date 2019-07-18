@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use glium::glutin::{
-    ContextBuilder, DeviceEvent, ElementState, Event, EventsLoop, WindowBuilder, WindowEvent,
+    ContextBuilder, DeviceEvent, ElementState, Event, EventsLoop, MouseButton, Window,
+    WindowBuilder, WindowEvent,
 };
 use glium::{Display, Surface};
 use std::env;
@@ -17,6 +18,7 @@ struct State {
     closed: bool,
     is_clean: bool,
     held: u8, // 0b1111 WASD
+    mouse_down: bool,
 }
 
 fn main() {
@@ -48,14 +50,16 @@ fn main() {
 
         sleep(Duration::from_millis(16));
 
-        events_loop.poll_events(|ev| state.handle(&ev));
+        events_loop.poll_events(|ev| state.handle(&display, &ev));
 
         state.tick();
     }
 }
 
+use std::ops::Deref;
+
 impl State {
-    fn handle(&mut self, ev: &Event) {
+    fn handle(&mut self, display: &glium::backend::glutin::Display, ev: &Event) {
         match ev {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -69,6 +73,26 @@ impl State {
                 ElementState::Released => self.held &= !held_bits_from_scancode(input.scancode),
             },
             Event::WindowEvent {
+                event:
+                    WindowEvent::MouseInput {
+                        state,
+                        button: MouseButton::Right,
+                        ..
+                    },
+                ..
+            } => {
+                self.mouse_down = match state {
+                    ElementState::Pressed => true,
+                    ElementState::Released => false,
+                };
+
+                let gl_window = display.gl_window();
+                let win: &Window = gl_window.window();
+
+                win.grab_cursor(self.mouse_down).unwrap();
+                win.hide_cursor(self.mouse_down);
+            }
+            Event::WindowEvent {
                 event: WindowEvent::Refresh,
                 ..
             } => self.is_clean = false,
@@ -76,10 +100,13 @@ impl State {
                 event: DeviceEvent::MouseMotion { delta },
                 ..
             } => {
-                self.is_clean = false;
-                self.camera.pan(cgmath::Deg(delta.0 as f32 / 5.0).into());
-                self.camera.tilt(cgmath::Deg(delta.1 as f32 / 5.0).into());
+                if self.mouse_down {
+                    self.is_clean = false;
+                    self.camera.pan(cgmath::Deg(delta.0 as f32 / 5.0).into());
+                    self.camera.tilt(cgmath::Deg(delta.1 as f32 / 5.0).into());
+                }
             }
+
             _ => (),
         }
     }
