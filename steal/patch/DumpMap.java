@@ -69,6 +69,11 @@ public class DumpMap {
             rgba.item(asUnsigned(v.b));
             rgba.item(asUnsigned(v.a));
             rgba.end("]");
+        o.item("\"uv\":");
+            C uv = new C("[");
+            uv.item(v.uv.getU());
+            uv.item(v.uv.getV());
+            uv.end("]");
         o.end("}");
     }
 

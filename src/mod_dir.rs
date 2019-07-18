@@ -19,6 +19,7 @@ impl<'a> ModDir<'a> {
         fs::create_dir(self.root.join("./map/"))?;
         fs::create_dir(self.root.join("./img/"))?;
         fs::create_dir(self.root.join("./img/bg/"))?;
+        fs::create_dir(self.root.join("./img/tex/"))?;
 
         Ok(())
     }

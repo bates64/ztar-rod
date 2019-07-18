@@ -1,18 +1,22 @@
 use cgmath::{Deg, Matrix3, Matrix4, Vector3};
 use glium::backend::Facade;
 use glium::index::{NoIndices, PrimitiveType};
+use glium::texture::{ClientFormat, RawImage2d};
 use glium::{
     implement_vertex, uniform, Depth, DepthTest, DrawParameters, Program, Surface, Texture2d,
     VertexBuffer,
 };
+use std::borrow::Cow;
 use std::collections::hash_map::{Entry, HashMap};
+use std::fs::{self, File};
+use std::io::BufReader;
 
 #[derive(Deserialize, Serialize)]
 pub struct Map(pub Vec<Mesh>);
 
 #[derive(Deserialize, Serialize)]
 pub struct Mesh {
-    pub texture: String,
+    pub texture: String, // TODO: maybe Option<String>
     pub triangles: Vec<[Vertex; 3]>,
 }
 
@@ -20,9 +24,10 @@ pub struct Mesh {
 pub struct Vertex {
     pub xyz: [i32; 3],
     pub rgba: [u8; 4],
+    pub uv: [i16; 2],
 }
 
-implement_vertex!(Vertex, xyz, rgba);
+implement_vertex!(Vertex, xyz, rgba, uv);
 
 pub struct Scene {
     textures: Vec<Texture2d>,
@@ -62,9 +67,9 @@ impl Scene {
     pub fn small<F: Facade>(facade: &F) -> Self {
         #[rustfmt::skip]
         let triangle = [
-            Vertex { xyz: [-163, 0,  -71], rgba: [182, 182, 182, 255] },
-            Vertex { xyz: [ 162, 0,  -71], rgba: [182, 182, 182, 255] },
-            Vertex { xyz: [ 152, 5, -151], rgba: [255, 255, 255, 255] },
+            Vertex { xyz: [-163, 0,  -71], rgba: [182, 182, 182, 255], uv: [0, 0] },
+            Vertex { xyz: [ 162, 0,  -71], rgba: [182, 182, 182, 255], uv: [0, 0] },
+            Vertex { xyz: [ 152, 5, -151], rgba: [255, 255, 255, 255], uv: [0, 0] },
         ];
 
         let buffer = VertexBuffer::new(facade, &triangle).unwrap();
@@ -76,8 +81,38 @@ impl Scene {
     }
 }
 
-fn locate_texture<F: Facade>(facade: &F, _tex: &str) -> Texture2d {
-    Texture2d::empty(facade, 32, 32).unwrap() // TODO
+fn locate_texture<F: Facade>(facade: &F, tex: &str) -> Texture2d {
+    let image = if tex == "" {
+        // a plain, blank texture: just one white pixel
+        RawImage2d {
+            data: Cow::Borrowed(&[255, 255, 255, 255]),
+            width: 1,
+            height: 1,
+            format: ClientFormat::U8U8U8U8,
+        }
+    } else {
+        let area = tex.split('_').nth(0).unwrap();
+        let proper_location = format!("mod/img/tex/{}.png", &tex);
+        let stolen_location = format!("steal/image/texture/{}_tex/{}.png", &area, &tex);
+
+        let reader = File::open(&proper_location)
+            .or_else(|_| {
+                fs::copy(&stolen_location, &proper_location)?;
+                File::open(&proper_location)
+            })
+            .map(BufReader::new)
+            .unwrap_or_else(|_| {
+                panic!(
+                    r#"could not locate texture "{}"; copy the Star Rod directory "image" to "steal""#,
+                    tex
+                )
+            });
+        let decoded = image::load(reader, image::PNG).unwrap().to_rgba();
+        let dimensions = decoded.dimensions();
+        RawImage2d::from_raw_rgba_reversed(&decoded.into_raw(), dimensions)
+    };
+
+    Texture2d::new(facade, image).unwrap()
 }
 
 #[derive(Debug)]
@@ -158,12 +193,14 @@ impl Renderer {
         let perspective: [[f32; 4]; 4] = cam.perspective(surface).into();
 
         for mesh in &scene.meshes {
+            let texture = &scene.textures[mesh.0];
+
             surface
                 .draw(
                     &mesh.1,
                     &indices,
                     &self.program,
-                    &uniform!(perspective: perspective),
+                    &uniform!(perspective: perspective, tex: texture),
                     &self.params,
                 )
                 .unwrap();
