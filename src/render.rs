@@ -1,6 +1,7 @@
 use cgmath::{Deg, Matrix3, Matrix4, Vector3};
 use glium::backend::Facade;
 use glium::index::{NoIndices, PrimitiveType};
+use glium::program::ProgramCreationInput;
 use glium::texture::{ClientFormat, RawImage2d};
 use glium::{
     implement_vertex, uniform, Depth, DepthTest, DrawParameters, Program, Surface, Texture2d,
@@ -173,8 +174,20 @@ impl Renderer {
         const VERTEX_SHADER_SRC: &str = include_str!("render/vert.glsl");
         const FRAGMENT_SHADER_SRC: &str = include_str!("render/frag.glsl");
 
-        let program =
-            Program::from_source(facade, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None).unwrap();
+        let program = Program::new(
+            facade,
+            ProgramCreationInput::SourceCode {
+                vertex_shader: VERTEX_SHADER_SRC,
+                tessellation_control_shader: None,
+                tessellation_evaluation_shader: None,
+                geometry_shader: None,
+                fragment_shader: FRAGMENT_SHADER_SRC,
+                transform_feedback_varyings: None,
+                outputs_srgb: true,
+                uses_point_size: false,
+            },
+        )
+        .unwrap();
 
         let params = DrawParameters {
             depth: Depth {
