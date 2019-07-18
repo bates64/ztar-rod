@@ -7,6 +7,7 @@ use glium::{
     implement_vertex, uniform, Depth, DepthTest, DrawParameters, Program, Surface, Texture2d,
     VertexBuffer,
 };
+use image::DynamicImage;
 use std::borrow::Cow;
 use std::collections::hash_map::{Entry, HashMap};
 use std::io;
@@ -14,7 +15,10 @@ use std::io;
 use crate::mod_dir::ModDir;
 
 #[derive(Deserialize, Serialize)]
-pub struct Map(pub Vec<Mesh>);
+pub struct Map {
+    pub bg_name: String,
+    pub meshes: Vec<Mesh>,
+}
 
 #[derive(Deserialize, Serialize)]
 pub struct Mesh {
@@ -28,12 +32,19 @@ pub struct Vertex {
     pub rgba: [u8; 4],
     pub uv: [i16; 2],
 }
-
 implement_vertex!(Vertex, xyz, rgba, uv);
+
+#[derive(Clone, Copy)]
+struct BgVertex {
+    xy: [i8; 2],
+    uv: [i8; 2],
+}
+implement_vertex!(BgVertex, xy, uv);
 
 pub struct Scene {
     textures: Vec<Texture2d>,
     meshes: Vec<(usize, VertexBuffer<Vertex>)>,
+    bg: VertexBuffer<BgVertex>,
 }
 
 impl Scene {
@@ -44,27 +55,27 @@ impl Scene {
         let mut textures = Vec::new();
         let mut meshes = Vec::new();
 
-        let empty_image = RawImage2d::<u8> {
-            data: Cow::Borrowed(&[255, 255, 255, 255]),
-            width: 1,
-            height: 1,
-            format: ClientFormat::U8U8U8U8,
-        };
-        let empty_tex = Texture2d::new(facade, empty_image).unwrap();
-        textures_map.insert("", 0);
-        textures.push(empty_tex);
+        let bg_tex = mod_dir.read_bg(&map.bg_name)?;
+        #[rustfmt::skip]
+        let bg = VertexBuffer::new(facade, &[
+            BgVertex { xy: [ 1, -1], uv: [1, 0] },
+            BgVertex { xy: [-1, -1], uv: [0, 0] },
+            BgVertex { xy: [ 1,  1], uv: [1, 1] },
+            BgVertex { xy: [-1,  1], uv: [0, 1] },
+        ]).unwrap();
+        textures.push(prepare_texture(facade, bg_tex));
 
-        for mesh in &map.0 {
+        textures_map.insert("", 1);
+        textures.push(empty_tex(facade));
+
+        for mesh in &map.meshes {
             let tex_id;
 
             match textures_map.entry(&mesh.texture) {
                 Entry::Occupied(entry) => tex_id = *entry.get(),
 
                 Entry::Vacant(entry) => {
-                    let decoded = mod_dir.read_tex(entry.key())?.to_rgba();
-                    let dimensions = decoded.dimensions();
-                    let image = RawImage2d::from_raw_rgba_reversed(&decoded.into_raw(), dimensions);
-                    let texture = Texture2d::new(facade, image).unwrap();
+                    let texture = prepare_texture(facade, mod_dir.read_tex(entry.key())?);
 
                     tex_id = textures.len();
                     textures.push(texture);
@@ -81,7 +92,11 @@ impl Scene {
             meshes.push((tex_id, buffer));
         }
 
-        Ok(Scene { textures, meshes })
+        Ok(Scene {
+            textures,
+            meshes,
+            bg,
+        })
     }
 
     pub fn small<F: Facade>(facade: &F) -> Self {
@@ -91,14 +106,33 @@ impl Scene {
             Vertex { xyz: [ 162, 0,  -71], rgba: [182, 182, 182, 255], uv: [0, 0] },
             Vertex { xyz: [ 152, 5, -151], rgba: [255, 255, 255, 255], uv: [0, 0] },
         ];
-
         let buffer = VertexBuffer::new(facade, &triangle).unwrap();
 
+        let bg = VertexBuffer::new(facade, &[]).unwrap();
+
         Scene {
-            textures: vec![],
+            textures: vec![empty_tex(facade)],
             meshes: vec![(0, buffer)],
+            bg,
         }
     }
+}
+
+fn empty_tex<F: Facade>(facade: &F) -> Texture2d {
+    let empty_image = RawImage2d::<u8> {
+        data: Cow::Borrowed(&[255, 255, 255, 255]),
+        width: 1,
+        height: 1,
+        format: ClientFormat::U8U8U8U8,
+    };
+    Texture2d::new(facade, empty_image).unwrap()
+}
+
+fn prepare_texture<F: Facade>(facade: &F, img: DynamicImage) -> Texture2d {
+    let decoded = img.to_rgba();
+    let dimensions = decoded.dimensions();
+    let image = RawImage2d::from_raw_rgba_reversed(&decoded.into_raw(), dimensions);
+    Texture2d::new(facade, image).unwrap()
 }
 
 #[derive(Debug)]
@@ -150,31 +184,37 @@ impl Camera {
 }
 
 pub struct Renderer {
-    program: Program,
-    params: DrawParameters<'static>,
+    mesh_program: Program,
+    mesh_params: DrawParameters<'static>,
+
+    bg_program: Program,
+    bg_params: DrawParameters<'static>,
 }
 
 impl Renderer {
     pub fn new<F: Facade>(facade: &F) -> Self {
+        fn program_with_srgb<F: Facade>(facade: &F, vert: &str, frag: &str) -> Program {
+            Program::new(
+                facade,
+                ProgramCreationInput::SourceCode {
+                    vertex_shader: vert,
+                    tessellation_control_shader: None,
+                    tessellation_evaluation_shader: None,
+                    geometry_shader: None,
+                    fragment_shader: frag,
+                    transform_feedback_varyings: None,
+                    outputs_srgb: true,
+                    uses_point_size: false,
+                },
+            )
+            .unwrap()
+        }
+
         const VERTEX_SHADER_SRC: &str = include_str!("render/vert.glsl");
         const FRAGMENT_SHADER_SRC: &str = include_str!("render/frag.glsl");
 
-        let program = Program::new(
-            facade,
-            ProgramCreationInput::SourceCode {
-                vertex_shader: VERTEX_SHADER_SRC,
-                tessellation_control_shader: None,
-                tessellation_evaluation_shader: None,
-                geometry_shader: None,
-                fragment_shader: FRAGMENT_SHADER_SRC,
-                transform_feedback_varyings: None,
-                outputs_srgb: true,
-                uses_point_size: false,
-            },
-        )
-        .unwrap();
-
-        let params = DrawParameters {
+        let mesh_program = program_with_srgb(facade, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC);
+        let mesh_params = DrawParameters {
             depth: Depth {
                 test: DepthTest::IfLess,
                 write: true,
@@ -183,10 +223,56 @@ impl Renderer {
             ..Default::default()
         };
 
-        Renderer { program, params }
+        const BG_VERTEX: &str = "#version 140
+            in vec2 xy;
+            in vec2 uv;
+            out vec2 tex_pos;
+            void main() {
+                gl_Position = vec4(xy, 0.0, 1.0);
+                tex_pos = uv;
+            }
+        ";
+        const BG_FRAG: &str = "#version 140
+            in vec2 tex_pos;
+            out vec4 color;
+            uniform sampler2D tex;
+            void main() {
+                color = texture(tex, tex_pos);
+            }
+        ";
+
+        let bg_program = program_with_srgb(facade, BG_VERTEX, BG_FRAG);
+        let bg_params = DrawParameters::default();
+
+        Renderer {
+            mesh_program,
+            mesh_params,
+            bg_program,
+            bg_params,
+        }
     }
 
     pub fn render<S: Surface>(&self, surface: &mut S, scene: &Scene, cam: &Camera) {
+        self.render_bg(surface, scene);
+        self.render_meshes(surface, scene, cam);
+    }
+
+    pub fn render_bg<S: Surface>(&self, surface: &mut S, scene: &Scene) {
+        let indices = NoIndices(PrimitiveType::TriangleStrip);
+        let texture = &scene.textures[0];
+
+        surface
+            .draw(
+                &scene.bg,
+                &indices,
+                &self.bg_program,
+                &uniform!(tex: texture),
+                &self.bg_params,
+            )
+            .unwrap();
+    }
+
+    pub fn render_meshes<S: Surface>(&self, surface: &mut S, scene: &Scene, cam: &Camera) {
         let indices = NoIndices(PrimitiveType::TrianglesList);
         let perspective: [[f32; 4]; 4] = cam.perspective(surface).into();
 
@@ -197,9 +283,9 @@ impl Renderer {
                 .draw(
                     &mesh.1,
                     &indices,
-                    &self.program,
+                    &self.mesh_program,
                     &uniform!(perspective: perspective, tex: texture),
-                    &self.params,
+                    &self.mesh_params,
                 )
                 .unwrap();
         }

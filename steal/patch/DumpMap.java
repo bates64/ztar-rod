@@ -17,6 +17,10 @@ public class DumpMap {
         ObjectInputStream obj_s = new ObjectInputStream(file_s);
         Map map = (Map) obj_s.readObject();
 
+        C c = new C("{");
+        c.item("\"bg_name\":\"" + map.bgName + "\"");
+        c.item("\"meshes\":");
+
         MapObjectTreeModel<Model> modelTree = map.modelTree;
 
         C models = new C("[");
@@ -34,6 +38,8 @@ public class DumpMap {
         }
 
         models.end("]");
+
+        c.end("}");
     }
 
     public static void printTriangles(Iterable<Triangle> ts) {
