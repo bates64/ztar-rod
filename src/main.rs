@@ -1,28 +1,28 @@
 #![allow(clippy::unreadable_literal)]
 
-mod rom;
 mod data;
+mod rom;
 //mod script;
 mod mod_dir;
 
-use std::path::Path;
-use std::fs::File;
-use rom::*;
-use mod_dir::ModDir;
 use data::map::asset_table::AssetTable;
+use mod_dir::ModDir;
+use rom::*;
+use std::fs::File;
+use std::path::Path;
 //use dir::ModDir;
 
 fn main() {
-    static ROM_JAPAN: &'static str   = "Mario Story (J) [!].z64";
+    static ROM_JAPAN: &'static str = "Mario Story (J) [!].z64";
     static ROM_AMERICA: &'static str = "Paper Mario (U) [!].z64";
-    static ROM_EUROPE: &'static str  = "Paper Mario (Europe) (En,Fr,De,Es).z64";
+    static ROM_EUROPE: &'static str = "Paper Mario (Europe) (En,Fr,De,Es).z64";
 
     match File::open(ROM_AMERICA) {
-        Err(_)  => println!("unable to open rom"),
+        Err(_) => println!("unable to open rom"),
         Ok(rom) => match dump(rom) {
             Err(error) => println!("{}", error),
-            Ok(())     => (),
-        }
+            Ok(()) => (),
+        },
     }
 }
 

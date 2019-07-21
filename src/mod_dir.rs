@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
 use std::fs;
 use std::io;
+use std::path::{Path, PathBuf};
 
 pub struct ModDir<'a> {
     root: &'a Path,
