@@ -1,12 +1,13 @@
+use itertools::Itertools;
+use png::HasParameters;
+use std::convert::TryInto;
+use std::fs::{self, File};
+
 use super::shape::Shape;
 use crate::data::color::Palette;
 use crate::data::yay0;
 use crate::mod_dir::ModDir;
 use crate::rom::*;
-use itertools::Itertools;
-use png::HasParameters;
-use std::convert::TryInto;
-use std::fs::{self, File};
 
 fn asset_table_addr(rom: &Rom) -> u32 {
     match rom.region {

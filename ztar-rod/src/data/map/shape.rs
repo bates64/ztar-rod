@@ -1,8 +1,9 @@
 // TODO
 
-use crate::data::color::Color;
 use std::io::prelude::*;
 use std::io::{self, Cursor, SeekFrom};
+
+use crate::data::color::Color;
 
 const BASE_ADDR: u32 = 0x80210000;
 
