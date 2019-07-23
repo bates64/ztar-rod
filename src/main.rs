@@ -1,16 +1,9 @@
-#![allow(clippy::unreadable_literal)]
-
-mod data;
-mod rom;
-//mod script;
-mod mod_dir;
-
-use data::map::asset_table::AssetTable;
-use mod_dir::ModDir;
-use rom::*;
 use std::fs::File;
 use std::path::Path;
-//use dir::ModDir;
+
+use ztar_rod::data::map::asset_table::AssetTable;
+use ztar_rod::mod_dir::ModDir;
+use ztar_rod::rom::*;
 
 fn main() {
     static ROM_JAPAN: &'static str = "Mario Story (J) [!].z64";
