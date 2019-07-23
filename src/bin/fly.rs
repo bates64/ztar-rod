@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use glium::glutin::{
     ContextBuilder, DeviceEvent, ElementState, Event, EventsLoop, MouseButton, Window,
-    WindowBuilder, WindowEvent,
+    WindowBuilder, WindowEvent, VirtualKeyCode,
 };
 use glium::{Display, Surface};
 use std::env;
@@ -9,16 +9,19 @@ use std::fs::File;
 use std::path::Path;
 use std::thread::sleep;
 use std::time::Duration;
+use std::collections::HashMap;
 use ztar_rod::mod_dir::ModDir;
 use ztar_rod::render::{Camera, Map, Renderer, Scene};
+
+static KEY_CAM_CONTROL: VirtualKeyCode = VirtualKeyCode::LShift;
 
 #[derive(Default)]
 struct State {
     camera: Camera,
     closed: bool,
     is_clean: bool,
-    held: u8, // 0b1111 WASD
-    mouse_down: bool,
+    keys_down: HashMap<VirtualKeyCode, bool>,
+    //mouse_down: bool,
 }
 
 fn main() {
@@ -65,11 +68,14 @@ impl State {
                 WindowEvent::CloseRequested => self.closed = true,
                 WindowEvent::Refresh => self.is_clean = false,
 
-                WindowEvent::KeyboardInput { input, .. } => match input.state {
-                    ElementState::Pressed => self.held |= held_bits_from_scancode(input.scancode),
-                    ElementState::Released => self.held &= !held_bits_from_scancode(input.scancode),
+                WindowEvent::KeyboardInput { input, .. } => if let Some(kc) = input.virtual_keycode {
+                    match input.state {
+                        ElementState::Pressed => self.keys_down.insert(kc, true),
+                        ElementState::Released => self.keys_down.insert(kc, false),
+                    };
                 },
 
+                /*
                 WindowEvent::MouseInput {
                     state,
                     button: MouseButton::Right,
@@ -79,23 +85,20 @@ impl State {
                         ElementState::Pressed => true,
                         ElementState::Released => false,
                     };
+                },
+                */
 
-                    let gl_window = display.gl_window();
-                    let win: &Window = gl_window.window();
-
-                    win.grab_cursor(self.mouse_down).unwrap();
-                    win.hide_cursor(self.mouse_down);
-                }
+                _ => (),
             },
 
             Event::DeviceEvent {
                 event: DeviceEvent::MouseMotion { delta },
                 ..
             } => {
-                if self.mouse_down {
+                if self.is_key_down(&KEY_CAM_CONTROL) {
                     self.is_clean = false;
-                    self.camera.pan(cgmath::Deg(delta.0 as f32 / 5.0).into());
-                    self.camera.tilt(cgmath::Deg(delta.1 as f32 / 5.0).into());
+                    self.camera.pan(cgmath::Deg(delta.0 as f32 * -0.1).into());
+                    self.camera.tilt(cgmath::Deg(delta.1 as f32 * -0.1).into());
                 }
             }
 
@@ -104,30 +107,33 @@ impl State {
     }
 
     fn tick(&mut self) {
-        if self.held != 0 {
-            self.is_clean = false;
-        }
+        if self.is_key_down(&KEY_CAM_CONTROL) {
+            if self.is_key_down(&VirtualKeyCode::W) {
+                self.camera.dolly(-10.0);
+                self.is_clean = false;
+            }
 
-        match self.held & 0b1010 {
-            0b1000 => self.camera.dolly(-10.0), // W
-            0b0010 => self.camera.dolly(10.0),  // S
-            _ => (),
-        }
+            if self.is_key_down(&VirtualKeyCode::S) {
+                self.camera.dolly(10.0);
+                self.is_clean = false;
+            }
 
-        match self.held & 0b0101 {
-            0b0100 => self.camera.truck(-10.0), // A
-            0b0001 => self.camera.truck(10.0),  // D
-            _ => (),
+            if self.is_key_down(&VirtualKeyCode::A) {
+                self.camera.truck(-10.0);
+                self.is_clean = false;
+            }
+
+            if self.is_key_down(&VirtualKeyCode::D) {
+                self.camera.truck(10.0);
+                self.is_clean = false;
+            }
         }
     }
-}
 
-fn held_bits_from_scancode(code: u32) -> u8 {
-    match code {
-        13 => 0b1000, // W
-        0 => 0b0100,  // A
-        1 => 0b0010,  // S
-        2 => 0b0001,  // D
-        _ => 0,
+    fn is_key_down(&self, kc: &VirtualKeyCode) -> bool {
+        match self.keys_down.get(kc) {
+            Some(true) => true,
+            _ => false,
+        }
     }
 }
