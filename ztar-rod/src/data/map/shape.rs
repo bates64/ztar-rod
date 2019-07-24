@@ -1,15 +1,14 @@
 // TODO
 
-use std::io::{self, SeekFrom, Cursor};
 use std::io::prelude::*;
+use std::io::{self, Cursor, SeekFrom};
+
 use crate::data::color::Color;
 
 const BASE_ADDR: u32 = 0x80210000;
 
 #[derive(Debug)]
-pub struct Shape {
-
-}
+pub struct Shape {}
 
 #[derive(Debug)]
 struct Vertex {
@@ -28,11 +27,11 @@ impl Shape {
         let mut data = Cursor::new(data);
 
         // Header
-        let mesh_tree          = read_u32(&mut data) - BASE_ADDR;
-        let vertex_table       = read_u32(&mut data) - BASE_ADDR;
-        let model_name_list    = read_u32(&mut data) - BASE_ADDR;
+        let mesh_tree = read_u32(&mut data) - BASE_ADDR;
+        let vertex_table = read_u32(&mut data) - BASE_ADDR;
+        let model_name_list = read_u32(&mut data) - BASE_ADDR;
         let collider_name_list = read_u32(&mut data) - BASE_ADDR;
-        let zone_name_list     = read_u32(&mut data).checked_sub(BASE_ADDR);
+        let zone_name_list = read_u32(&mut data).checked_sub(BASE_ADDR);
 
         Ok(Shape {})
     }

@@ -94,8 +94,8 @@ impl Color {
     pub fn from_rgba16(s: u16) -> Color {
         Color {
             r: (255.0 * (f32::from((s >> 11) & 0x1F) / 31.0)) as u8,
-            g: (255.0 * (f32::from((s >> 6)  & 0x1F) / 31.0)) as u8,
-            b: (255.0 * (f32::from((s >> 1)  & 0x1F) / 31.0)) as u8,
+            g: (255.0 * (f32::from((s >> 6) & 0x1F) / 31.0)) as u8,
+            b: (255.0 * (f32::from((s >> 1) & 0x1F) / 31.0)) as u8,
             a: if (s & 1) == 1 { 0xFF } else { 0x00 },
         }
     }
@@ -112,8 +112,8 @@ impl Color {
         Color {
             r: (s >> 24) as u8,
             g: (s >> 16) as u8,
-            b: (s >> 8)  as u8,
-            a: s         as u8,
+            b: (s >> 8) as u8,
+            a: s as u8,
         }
     }
 }

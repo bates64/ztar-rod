@@ -1,9 +1,9 @@
-pub use std::io::{prelude::*, SeekFrom};
 pub use ascii::*;
-use std::fs::File;
-use std::fmt;
-use failure::{Error, bail};
+use failure::{bail, Error};
 use failure_derive::*;
+use std::fmt;
+use std::fs::File;
+pub use std::io::{prelude::*, SeekFrom};
 
 //pub mod loc;
 //use loc::*;
@@ -26,7 +26,7 @@ impl Region {
             b'J' => Some(Region::Japan),
             b'E' => Some(Region::America),
             b'P' => Some(Region::Europe),
-            _    => None,
+            _ => None,
         }
     }
 }
@@ -53,7 +53,7 @@ impl Rom {
 
                 match Region::from(ch[0]) {
                     Some(region) => region,
-                    _  => bail!("only JP, USA, and PAL roms are supported"),
+                    _ => bail!("only JP, USA, and PAL roms are supported"),
                 }
             },
             file,
@@ -139,12 +139,16 @@ impl Rom {
 }
 
 pub trait RomRead {
-    fn read(rom: &mut Rom) -> Result<Self, ReadError> where Self: Sized;
+    fn read(rom: &mut Rom) -> Result<Self, ReadError>
+    where
+        Self: Sized;
 }
 
 pub trait RomReadLen {
     /// Should always read exactly `len` bytes.
-    fn read_len(rom: &mut Rom, len: usize) -> Result<Self, ReadError> where Self: Sized;
+    fn read_len(rom: &mut Rom, len: usize) -> Result<Self, ReadError>
+    where
+        Self: Sized;
 }
 
 #[derive(Debug, Fail)]
@@ -181,7 +185,7 @@ impl fmt::Display for Pointer {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Pointer::Address(addr) => write!(fmt, "{:#010X}", addr),
-            Pointer::NullPtr       => write!(fmt, "nullptr"),
+            Pointer::NullPtr => write!(fmt, "nullptr"),
         }
     }
 }
@@ -190,7 +194,7 @@ impl fmt::Debug for Pointer {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Pointer::Address(addr) => write!(fmt, "Address({:#010X})", addr),
-            Pointer::NullPtr      => write!(fmt, "NullPtr"),
+            Pointer::NullPtr => write!(fmt, "NullPtr"),
         }
     }
 }

@@ -22,4 +22,4 @@ $ cargo run
 
 # license
 
-This software is licensed under the UNLICENSE; i.e. it has been released into the public domain. You can do whatever with it: redistribute, sell, modify, etc.
+ztar rod is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0) or the [MIT license](http://opensource.org/licenses/MIT), at your option.
