@@ -1,0 +1,209 @@
+VR4300 Instruction Set Encoding
+===============================
+
+See the bottom of the file for help interpreting this table.
+
+
+
+General Purpose Registers
+-------------------------
+R0 AT V0 V1   A0 A1 A2 A3   <-- register number 0, 1, 2, ...
+T0 T1 T2 T3   T4 T5 T6 T7                       7, 8, 9, ...
+S0 S1 S2 S3   S4 S5 S6 S7
+T8 T9 K0 K1   GP SP S8 RA
+
+
+
+Mnemonic                  | Encoding
+--------------------------|----------------|-------------|-----------------|-----------|-------|---------------
+ADD     rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | ADD     100000
+ADDI    rt, rs, immediate | ADDI    001000 |       rs    |           rt    | immediate | .     | .
+ADDIU   rt, rs, immediate | ADDIU   001001 |       rs    |           rt    | immediate | .     | .
+ADDU    rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | ADDU    100001
+AND     rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | AND     100100
+ANDI    rt, rs, immediate | ANDI    001100 |       rs    |           rt    | immediate | .     | .
+BCzF    offset            | COPZ    0100xx | BC    01000 | BCF       00000 | offset    | .     | .
+BCzFL   offset            | COPZ    0100xx | BC    01000 | BCFL      00010 | offset    | .     | .
+BCzT    offset            | COPZ    0100xx | BC    01000 | BCT       00001 | offset    | .     | .
+BCzTL   offset            | COPZ    0100xx | BC    01000 | BCTL      00011 | offset    | .     | .
+BEQ     rs, rt, offset    | BEQ     000100 |       rs    |           rt    | offset    | .     | .
+BEQL    rs, rt, offset    | BEQL    010100 |       rs    |           rt    | offset    | .     | .
+BGEZ    rs, offset        | REGIMM  000001 |       rs    | BGEZ      00001 | offset    | .     | .
+BGEZAL  rs, offset        | REGIMM  000001 |       rs    | BGEZAL    10001 | offset    | .     | .
+BGEZALL rs, offset        | REGIMM  000001 |       rs    | BGEZALL   10011 | offset    | .     | .
+BGEZL   rs, offset        | REGIMM  000001 |       rs    | BGEZL     00011 | offset    | .     | .
+BGTZ    rs, offset        | BGTZ    000111 |       rs    |           00000 | offset    | .     | .
+BGTZL   rs, offset        | BGTZL   010111 |       rs    |           00000 | offset    | .     | .
+BLEZ    rs, offset        | BLEZ    000110 |       rs    |           00000 | offset    | .     | .
+BLEZL   rs, offset        | BLEZ    010110 |       rs    |           00000 | offset    | .     | .
+BLTZ    rs, offset        | REGIMM  000001 |       rs    | BLTZ      00000 | offset    | .     | .
+BLTZAL  rs, offset        | REGIMM  000001 |       rs    | BLTZAL    10000 | offset    | .     | .
+BLTZALL rs, offset        | REGIMM  000001 |       rs    | BLTZALL   10010 | offset    | .     | .
+BLTZL   rs, offset        | REGIMM  000001 |       rs    | BLTZL     00010 | offset    | .     | .
+BNE     rs, rt, offset    | BNE     000101 |       rs    |           rt    | offset    | .     | .
+BNEL    rs, rt, offset    | BNEL    010101 |       rs    |           rt    | offset    | .     | .
+BREAK   [code]            | SPECIAL 000000 |       code  | .               | .         | .     | BREAK   001101
+CACHE   op, offset(base)  | CACHE   101111 |       base  |           op    | offset    | .     | .
+CFCz    rt, rd            | COPz    0100xx | CF    00010 |           rt    | rd        | 00000 | 000000
+COPz    cofun             | COPz    0100xx | CO 1        |       cofun(25) | .         | .     | .
+CTCz    rt, rd            | COPz    0100xx | CT    00110 |           rt    | rd        | 00000 | 000000
+DADD    rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | DADD    101100
+DADDI   rt, rs, immediate | DADDI   011000 |       rs    |           rt    | immediate | .     | .
+DADDIU  rt, rs, immediate | DADDIU  011001 |       rs    |           rt    | immediate | .     | .
+DADDU   rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | DADDU   101101
+DDIV    rs, rt            | SPECIAL 000000 |       rs    |           rt    | 00000     | 00000 | DDIV    011110
+DDIVU   rs, rt            | SPECIAL 000000 |       rs    |           rt    | 00000     | 00000 | DDIVU   011111
+DIV     rs, rt            | SPECIAL 000000 |       rs    |           rt    | 00000     | 00000 | DIV     011010
+DIVU    rs, rt            | SPECIAL 000000 |       rs    |           rt    | 00000     | 00000 | DIVU    011011
+DMFC0   rt, rd            | COP0    010000 | DMF   00001 |           rt    | rd        | 00000 | 000000
+DMTC0   rt, rd            | COP0    010000 | DMT   00101 |           rt    | rd        | 00000 | 000000
+DMULT   rs, rt            | SPECIAL 000000 |       rs    |           rt    | 00000     | 00000 | DMULT   011100
+DMULTU  rs, rt            | SPECIAL 000000 |       rs    |           rt    | 00000     | 00000 | DMULTU  011101
+DSLL    rd, rt, sa        | SPECIAL 000000 |       00000 |           rt    | rd        | sa    | DSLL    111000
+DSLLV   rd, rt, rs        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | DSLLV   010100
+DSLL32  rd, rt, sa        | SPECIAL 000000 |       00000 |           rt    | rd        | sa    | DSLL32  111100
+DSRA    rd, rt, sa        | SPECIAL 000000 |       00000 |           rt    | rd        | sa    | DSRA    111011
+DSRAV   rd, rt, rs        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | DSRAV   010111
+DSRA32  rd, rt, sa        | SPECIAL 000000 |       00000 |           rt    | rd        | sa    | DSRA32  111111
+DSRL    rd, rt, sa        | SPECIAL 000000 |       00000 |           rt    | rd        | sa    | DSRL    111010
+DSRLV   rd, rt, rs        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | DSRLV   010110
+DSRL32  rd, rt, sa        | SPECIAL 000000 |       00000 |           rt    | rd        | sa    | DSRL32  111110
+DSUB    rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | DSUB    101110
+DSUBU   rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | DSUBU   101111
+ERET                      | COP0    010000 | CO 1 (0000) |           00000 | 00000     | 00000 | ERET    011000
+J       target            | J       000010 | target(26)  | .               | .         | .     | .
+JAL     target            | JAL     000011 | target(26)  | .               | .         | .     | .
+JALR    [rd,] rs          | SPECIAL 000000 |       rs    |           00000 | rd        | 00000 | JALR    001001
+JR      rs                | SPECIAL 000000 |       rs    |           00000 | 00000     | 00000 | JR      001000
+LB      rt, offset(base)  | LB      100000 |       base  |           rt    | offset    | .     | .
+LBU     rt, offset(base)  | LBU     100100 |       base  |           rt    | offset    | .     | .
+LD      rt, offset(base)  | LD      110111 |       base  |           rt    | offset    | .     | .
+LDCz    rt, offset(base)  | LDCz    1101xx |       base  |           rt    | offset    | .     | .
+LDL     rt, offset(base)  | LDL     011010 |       base  |           rt    | offset    | .     | .
+LDR     rt, offset(base)  | LDR     011011 |       base  |           rt    | offset    | .     | .
+LH      rt, offset(base)  | LH      100001 |       base  |           rt    | offset    | .     | .
+LHU     rt, offset(base)  | LHU     100101 |       base  |           rt    | offset    | .     | .
+LL      rt, offset(base)  | LL      110000 |       base  |           rt    | offset    | .     | .
+LLD     rt, offset(base)  | LLD     110100 |       base  |           rt    | offset    | .     | .
+LUI     rt, immediate     | LUI     001111 |       00000 |           rt    | immediate | .     | .
+LW      rt, offset(base)  | LW      100011 |       base  |           rt    | offset    | .     | .
+LWCz    rt, offset(base)  | LWCz    1100xx |       base  |           rt    | offset    | .     | .
+LWL     rt, offset(base)  | LWL     100010 |       base  |           rt    | offset    | .     | .
+LWR     rt, offset(base)  | LWR     100110 |       base  |           rt    | offset    | .     | .
+LWU     rt, offset(base)  | LWU     100111 |       base  |           rt    | offset    | .     | .
+MFC0    rt, rd            | COP0    010000 | MF    00000 |           rt    | rd        | 00000 | 000000
+MFCz    rt, rd            | COPz    0100xx | MF    00000 |           rt    | rd        | 00000 | 000000
+MFHI    rd                | SPECIAL 000000 |       00000 |           00000 | rd        | 00000 | MFHI    010000
+MFLO    rd                | SPECIAL 000000 |       00000 |           00000 | rd        | 00000 | MFLO    010010
+MTC0    rt, rd            | COP0    010000 | MT    00100 |           rt    | rd        | 00000 | 000000
+MTCz    rt, rd            | COPz    0100xx | MT    00100 |           rt    | rd        | 00000 | 000000
+MTHI    rs                | SPECIAL 000000 |       rs    |           00000 | 00000     | 00000 | MTHI    010001
+MTLO    rs                | SPECIAL 000000 |       rs    |           00000 | 00000     | 00000 | MTLO    010011
+MULT    rs, rt            | SPECIAL 000000 |       rs    |           rt    | 00000     | 00000 | MULT    011000
+MULTU   rs, rt            | SPECIAL 000000 |       rs    |           rt    | 00000     | 00000 | MULTU   011001
+NOR     rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | NOR     100111
+OR      rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | OR      100101
+ORI     rt, rs, immediate | ORI     001101 |       rs    |           rt    | immediate | .     | .
+SB      rt, offset(base)  | SB      101000 |       base  |           rt    | offset    | .     | .
+SC      rt, offset(base)  | SC      111000 |       base  |           rt    | offset    | .     | .
+SCD     rt, offset(base)  | SCD     111100 |       base  |           rt    | offset    | .     | .
+SD      rt, offset(base)  | SD      111111 |       base  |           rt    | offset    | .     | .
+SDCz    rt, offset(base)  | SDCz    1111xx |       base  |           rt    | offset    | .     | .
+SDL     rt, offset(base)  | SDL     101100 |       base  |           rt    | offset    | .     | .
+SDR     rt, offset(base)  | SDR     101101 |       base  |           rt    | offset    | .     | .
+SH      rt, offset(base)  | SH      101001 |       base  |           rt    | offset    | .     | .
+SLL     rd, rt, sa        | SPECIAL 000000 |       00000 |           rt    | rd        | sa    | SLL     000000
+SLLV    rd, rt, rs        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | SLLV    000100
+SLT     rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | SLT     101010
+SLTI    rt, rs, immediate | SLTI    001010 |       rs    |           rt    | immediate | .     | .
+SLTIU   rt, rs, immediate | SLTIU   001011 |       rs    |           rt    | immediate | .     | .
+SLTU    rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | SLTU    101011
+SRA     rd, rt, sa        | SPECIAL 000000 |       00000 |           rt    | rd        | sa    | SRA     000011
+SRAV    rd, rt, rs        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | SRAV    000111
+SRL     rd, rt, sa        | SPECIAL 000000 |       00000 |           rt    | rd        | sa    | SRL     000010
+SRLV    rd, rt, rs        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | SRLV    000110
+SUB     rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | SUB     100010
+SUBU    rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | SUBU    100011
+SW      rt, offset(base)  | SW      101011 |       base  |           rt    | offset    | .     | .
+SWCz    rt, offset(base)  | SWCz    1110xx |       base  |           rt    | offset    | .     | .
+SWL     rt, offset(base)  | SWL     101010 |       base  |           rt    | offset    | .     | .
+SWR     rt, offset(base)  | SWR     101110 |       base  |           rt    | offset    | .     | .
+SYNC                      | SPECIAL 000000 |       00000 |           00000 | 00000     | 00000 | SYNC    001111
+SYSCALL [code]            | SPECIAL 000000 |       code  | .               | .         | .     | SYSCALL 001100
+TEQ     rs, rt, [code]    | SPECIAL 000000 |       rs    |           rt    | code      | .     | TEQ     110100
+TEQI    rs, immediate     | REGIMM  000001 |       rs    | TEQI      01100 | immediate | .     | .
+TGE     rs, rt, [code]    | SPECIAL 000000 |       rs    |           rt    | code      | .     | TGE     110000
+TGEI    rs, immediate     | REGIMM  000001 |       rs    | TGEI      01000 | immediate | .     | .
+TGEIU   rs, immediate     | REGIMM  000001 |       rs    | TGEIU     01001 | immediate | .     | .
+TGEU    rs, rt, [code]    | SPECIAL 000000 |       rs    |           rt    | code      | .     | TGEU    110001
+TLBP                      | COP0    010000 | CO 1 (0000) |           00000 | 00000     | 00000 | TLBP    001000
+TLBR                      | COP0    010000 | CO 1 (0000) |           00000 | 00000     | 00000 | TLBR    000001
+TLBWI                     | COP0    010000 | CO 1 (0000) |           00000 | 00000     | 00000 | TLBWI   000010
+TLBWR                     | COP0    010000 | CO 1 (0000) |           00000 | 00000     | 00000 | TLBWR   000110
+TLT     rs, rt, [code]    | SPECIAL 000000 |       rs    |           rt    | code      | .     | TLT     110010
+TLTI    rs, immediate     | REGIMM  000001 |       rs    | TLTI      01010 | immediate | .     | .
+TLTIU   rs, immediate     | REGIMM  000001 |       rs    | TLTIU     01011 | immediate | .     | .
+TLTU    rs, rt, [code]    | SPECIAL 000000 |       rs    |           rt    | code      | .     | TLTU    110011
+TNE     rs, rt, [code]    | SPECIAL 000000 |       rs    |           rt    | code      | .     | TNE     110110
+TNEI    rs, immediate     | REGIMM  000001 |       rs    | TNEI      01110 | immediate | .     | .
+XOR     rd, rs, rt        | SPECIAL 000000 |       rs    |           rt    | rd        | 00000 | XOR     100110
+XORI    rt, rs, immediate | XORI    001110 |       rs    |           rt    | immediate | .     | .
+
+
+
+# How to read this table
+
+
+
+The first column is the instruction mnemonic, with operands. The following
+columns indicate the bit encoding of the instruction.
+
+The CPU is big endian. Each instruction is 4 bytes long. The leftmost bit in
+this table is bit 31, a.k.a. bit 7 of the first byte when the instruction is
+encoded.
+
+Some mnemonics have an operand `[code]`. This indicates that the instruction
+has many valid encodings, varying by the code (of an appropriate bit length).
+The user's manual does not have a textual representation of that code. It
+suggests a default value of 0.
+
+JALR has two forms, `JALR rs` and `JALR rd, rs`. If no first argument is given,
+it is assumed to be RA, a.k.a. r31.
+
+The parentheses in e.g. `LB rt, offset(base)` do *not* indicate an optional
+argument --- the parentheses are a required component of the mnemonic, e.g.
+`LB S1, 5(S0)`.
+
+
+
+The 32 bits of an encoded instruction are divided into at most six logical
+fields. With two exceptions, these fields all line up on these bit boundaries:
+
+    32      26     21     16     11     6        0
+      opcode     rs     rt     rd     sa    funct
+
+The exceptions are `COPz` fields `CO 1 | cofun(25)`, where the CO field is 1
+bit long, and cofun is 25 bits long; and the ERET and TLB* family's field `CO 1
+(0000) | ...`, where the required 0 bits have been split up as usual.
+
+`J` and `JAL` take a 26-bit target, which is shown in parentheses.
+
+Dots in the encoding columns `.` indicate that a field continues through the
+bit boundary.
+
+Uppercase mnemonics in the encoding columns are only for convenience. They do
+not have meaning in the bit encoding.
+
+
+
+Coprocessor instructions have a lowercase `z` in the mnemonic, e.g. `BCzF`.
+When in actual assembly code these are written with the coprocessor number in
+place of `z`, e.g. `BC1F`.
+
+Although the manual specifies that MIPS leaves the option for four
+coprocessors, COP0 through COP3, there is not enough space in the opcodes to
+encode COP3. Also, COP0 instructions are written separately in the manual.
+
+Accordingly, the `z` in coprocessor instructions should be filled with `1` or
+`2`. The `xx` field in the `COPz` opcode should be filled with `01` or `10`,
+respectively.

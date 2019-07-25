@@ -1,0 +1,361 @@
+use std::convert::TryFrom;
+use std::fmt;
+
+// TODO: register numbers instead of names?
+
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[rustfmt::skip]
+pub enum Register {
+    R0, AT, V0, V1,   A0, A1, A2, A3,
+    T0, T1, T2, T3,   T4, T5, T6, T7,
+    S0, S1, S2, S3,   S4, S5, S6, S7,
+    T8, T9, K0, K1,   GP, SP, S8, RA,
+}
+
+impl TryFrom<u32> for Register {
+    type Error = ();
+
+    fn try_from(i: u32) -> Result<Register, ()> {
+        use Register::*;
+
+        #[rustfmt::skip]
+        let registers = [
+            R0, AT, V0, V1,   A0, A1, A2, A3,
+            T0, T1, T2, T3,   T4, T5, T6, T7,
+            S0, S1, S2, S3,   S4, S5, S6, S7,
+            T8, T9, K0, K1,   GP, SP, S8, RA,
+        ];
+
+        registers.get(i as usize).cloned().ok_or(())
+    }
+}
+
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        #[rustfmt::skip]
+        let names = [
+            "R0", "AT", "V0", "V1",   "A0", "A1", "A2", "A3",
+            "T0", "T1", "T2", "T3",   "T4", "T5", "T6", "T7",
+            "S0", "S1", "S2", "S3",   "S4", "S5", "S6", "S7",
+            "T8", "T9", "K0", "K1",   "GP", "SP", "S8", "RA",
+        ];
+
+        f.write_str(names[*self as usize])
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum Coprocessor {
+    COP1 = 1,
+    COP2 = 2,
+}
+
+impl TryFrom<u32> for Coprocessor {
+    type Error = ();
+
+    fn try_from(i: u32) -> Result<Coprocessor, ()> {
+        match i {
+            1 => Ok(Coprocessor::COP1),
+            2 => Ok(Coprocessor::COP2),
+            _ => Err(()),
+        }
+    }
+}
+
+impl fmt::Display for Coprocessor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", (*self as u8) + 1)
+    }
+}
+
+type R = Register;
+type Cop = Coprocessor;
+
+// TODO: distinguish coprocessor registers `rd`
+
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum Instruction {
+    ADD(R, R, R),
+    ADDI(R, R, i16),
+    ADDIU(R, R, i16),
+    ADDU(R, R, R),
+    AND(R, R, R),
+    ANDI(R, R, i16),
+    BCzF(Cop, i16),
+    BCzFL(Cop, i16),
+    BCzT(Cop, i16),
+    BCzTL(Cop, i16),
+    BEQ(R, R, i16),
+    BEQL(R, R, i16),
+    BGEZ(R, i16),
+    BGEZAL(R, i16),
+    BGEZALL(R, i16),
+    BGEZL(R, i16),
+    BGTZ(R, i16),
+    BGTZL(R, i16),
+    BLEZ(R, i16),
+    BLEZL(R, i16),
+    BLTZ(R, i16),
+    BLTZAL(R, i16),
+    BLTZALL(R, i16),
+    BLTZL(R, i16),
+    BNE(R, R, i16),
+    BNEL(R, R, i16),
+    BREAK(u32),
+    CACHE(u8, i16, R),
+    CFCz(Cop, R, R),
+    COPz(Cop, u32),
+    CTCz(Cop, R, R),
+    DADD(R, R, R),
+    DADDI(R, R, i16),
+    DADDIU(R, R, i16),
+    DADDU(R, R, R),
+    DDIV(R, R),
+    DDIVU(R, R),
+    DIV(R, R),
+    DIVU(R, R),
+    DMFC0(R, R),
+    DMTC0(R, R),
+    DMULT(R, R),
+    DMULTU(R, R),
+    DSLL(R, R, u8),
+    DSLLV(R, R, R),
+    DSLL32(R, R, u8),
+    DSRA(R, R, u8),
+    DSRAV(R, R, R),
+    DSRA32(R, R, u8),
+    DSRL(R, R, u8),
+    DSRLV(R, R, R),
+    DSRL32(R, R, u8),
+    DSUB(R, R, R),
+    DSUBU(R, R, R),
+    ERET,
+    J(u32),
+    JAL(u32),
+    JALR(R, R),
+    JR(R),
+    LB(R, i16, R),
+    LBU(R, i16, R),
+    LD(R, i16, R),
+    LDCz(Cop, R, i16, R),
+    LDL(R, i16, R),
+    LDR(R, i16, R),
+    LH(R, i16, R),
+    LHU(R, i16, R),
+    LL(R, i16, R),
+    LLD(R, i16, R),
+    LUI(R, i16),
+    LW(R, i16, R),
+    LWCz(Cop, R, i16, R),
+    LWL(R, i16, R),
+    LWR(R, i16, R),
+    LWU(R, i16, R),
+    MFC0(R, R),
+    MFCz(Cop, R, R),
+    MFHI(R),
+    MFLO(R),
+    MTC0(R, R),
+    MTCz(Cop, R, R),
+    MTHI(R),
+    MTLO(R),
+    MULT(R, R),
+    MULTU(R, R),
+    NOR(R, R, R),
+    OR(R, R, R),
+    ORI(R, R, i16),
+    SB(R, i16, R),
+    SC(R, i16, R),
+    SCD(R, i16, R),
+    SD(R, i16, R),
+    SDCz(Cop, R, i16, R),
+    SDL(R, i16, R),
+    SDR(R, i16, R),
+    SH(R, i16, R),
+    SLL(R, R, u8),
+    SLLV(R, R, R),
+    SLT(R, R, R),
+    SLTI(R, R, i16),
+    SLTIU(R, R, i16),
+    SLTU(R, R, R),
+    SRA(R, R, u8),
+    SRAV(R, R, R),
+    SRL(R, R, u8),
+    SRLV(R, R, R),
+    SUB(R, R, R),
+    SUBU(R, R, R),
+    SW(R, i16, R),
+    SWCz(Cop, R, i16, R),
+    SWL(R, i16, R),
+    SWR(R, i16, R),
+    SYNC,
+    SYSCALL(u32),
+    TEQ(R, R, u16),
+    TEQI(R, i16),
+    TGE(R, R, u16),
+    TGEI(R, i16),
+    TGEIU(R, i16),
+    TGEU(R, R, u16),
+    TLBP,
+    TLBR,
+    TLBWI,
+    TLBWR,
+    TLT(R, R, u16),
+    TLTI(R, i16),
+    TLTIU(R, i16),
+    TLTU(R, R, u16),
+    TNE(R, R, u16),
+    TNEI(R, i16),
+    XOR(R, R, R),
+    XORI(R, R, i16),
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Instruction::*;
+        use Register::RA;
+
+        match self {
+            ADD(rd, rs, rt) => write!(f, "ADD     {}, {}, {}", rd, rs, rt),
+            ADDI(rt, rs, imm) => write!(f, "ADDI    {}, {}, {}", rt, rs, imm),
+            ADDIU(rt, rs, imm) => write!(f, "ADDIU   {}, {}, {}", rt, rs, imm),
+            ADDU(rd, rs, rt) => write!(f, "ADDU    {}, {}, {}", rd, rs, rt),
+            AND(rd, rs, rt) => write!(f, "AND     {}, {}, {}", rd, rs, rt),
+            ANDI(rt, rs, imm) => write!(f, "ANDI    {}, {}, {}", rt, rs, imm),
+            BCzF(cop, offset) => write!(f, "BC{}F    {}", cop, offset),
+            BCzFL(cop, offset) => write!(f, "BC{}FL   {}", cop, offset),
+            BCzT(cop, offset) => write!(f, "BC{}T    {}", cop, offset),
+            BCzTL(cop, offset) => write!(f, "BC{}TL   {}", cop, offset),
+            BEQ(rs, rt, offset) => write!(f, "BEQ     {}, {}, {}", rs, rt, offset),
+            BEQL(rs, rt, offset) => write!(f, "BEQL    {}, {}, {}", rs, rt, offset),
+            BGEZ(rs, offset) => write!(f, "BGEZ    {}, {}", rs, offset),
+            BGEZAL(rs, offset) => write!(f, "BGEZAL  {}, {}", rs, offset),
+            BGEZALL(rs, offset) => write!(f, "BGEZALL {}, {}", rs, offset),
+            BGEZL(rs, offset) => write!(f, "BGEZL   {}, {}", rs, offset),
+            BGTZ(rs, offset) => write!(f, "BGTZ    {}, {}", rs, offset),
+            BGTZL(rs, offset) => write!(f, "BGTZL   {}, {}", rs, offset),
+            BLEZ(rs, offset) => write!(f, "BLEZ    {}, {}", rs, offset),
+            BLEZL(rs, offset) => write!(f, "BLEZL   {}, {}", rs, offset),
+            BLTZ(rs, offset) => write!(f, "BLTZ    {}, {}", rs, offset),
+            BLTZAL(rs, offset) => write!(f, "BLTZAL  {}, {}", rs, offset),
+            BLTZALL(rs, offset) => write!(f, "BLTZALL {}, {}", rs, offset),
+            BLTZL(rs, offset) => write!(f, "BLTZL   {}, {}", rs, offset),
+            BNE(rs, rt, offset) => write!(f, "BNE     {}, {}, {}", rs, rt, offset),
+            BNEL(rs, rt, offset) => write!(f, "BNEL    {}, {}, {}", rs, rt, offset),
+            BREAK(0) => write!(f, "BREAK"),
+            BREAK(_code) => unimplemented!(),
+            CACHE(op, offset, base) => write!(f, "CACHE   {}, {}({})", op, offset, base),
+            CFCz(cop, rt, rd) => write!(f, "CFC{}    {}, {}", cop, rt, rd),
+            COPz(cop, cofun) => write!(f, "COP{}    {}", cop, cofun),
+            CTCz(cop, rt, rd) => write!(f, "CTC{}    {}, {}", cop, rt, rd),
+            DADD(rd, rs, rt) => write!(f, "DADD    {}, {}, {}", rd, rs, rt),
+            DADDI(rt, rs, imm) => write!(f, "DADDI   {}, {}, {}", rt, rs, imm),
+            DADDIU(rt, rs, imm) => write!(f, "DADDIU  {}, {}, {}", rt, rs, imm),
+            DADDU(rd, rs, rt) => write!(f, "DADDU   {}, {}, {}", rd, rs, rt),
+            DDIV(rs, rt) => write!(f, "DDIV    {}, {}", rs, rt),
+            DDIVU(rs, rt) => write!(f, "DDIVU   {}, {}", rs, rt),
+            DIV(rs, rt) => write!(f, "DIV     {}, {}", rs, rt),
+            DIVU(rs, rt) => write!(f, "DIVU    {}, {}", rs, rt),
+            DMFC0(rt, rd) => write!(f, "DMFC0   {}, {}", rt, rd),
+            DMTC0(rt, rd) => write!(f, "DMTC0   {}, {}", rt, rd),
+            DMULT(rs, rt) => write!(f, "DMULT   {}, {}", rs, rt),
+            DMULTU(rs, rt) => write!(f, "DMULTU  {}, {}", rs, rt),
+            DSLL(rd, rt, sa) => write!(f, "DSLL    {}, {}, {}", rd, rt, sa),
+            DSLLV(rd, rt, rs) => write!(f, "DSLLV   {}, {}, {}", rd, rt, rs),
+            DSLL32(rd, rt, sa) => write!(f, "DSLL32  {}, {}, {}", rd, rt, sa),
+            DSRA(rd, rt, sa) => write!(f, "DSRA    {}, {}, {}", rd, rt, sa),
+            DSRAV(rd, rt, rs) => write!(f, "DSRAV   {}, {}, {}", rd, rt, rs),
+            DSRA32(rd, rt, sa) => write!(f, "DSRA32  {}, {}, {}", rd, rt, sa),
+            DSRL(rd, rt, sa) => write!(f, "DSRL    {}, {}, {}", rd, rt, sa),
+            DSRLV(rd, rt, rs) => write!(f, "DSRLV   {}, {}, {}", rd, rt, rs),
+            DSRL32(rd, rt, sa) => write!(f, "DSRL32  {}, {}, {}", rd, rt, sa),
+            DSUB(rd, rs, rt) => write!(f, "DSUB    {}, {}, {}", rd, rs, rt),
+            DSUBU(rd, rs, rt) => write!(f, "DSUBU   {}, {}, {}", rd, rs, rt),
+            ERET => write!(f, "ERET"),
+            J(target) => write!(f, "J       {}", target),
+            JAL(target) => write!(f, "JAL     {}", target),
+            JALR(RA, rs) => write!(f, "JALR    {}", rs),
+            JALR(rd, rs) => write!(f, "JALR    {}, {}", rd, rs),
+            JR(rs) => write!(f, "JR      {}", rs),
+            LB(rt, offset, base) => write!(f, "LB      {}, {}({})", rt, offset, base),
+            LBU(rt, offset, base) => write!(f, "LBU     {}, {}({})", rt, offset, base),
+            LD(rt, offset, base) => write!(f, "LD      {}, {}({})", rt, offset, base),
+            LDCz(cop, rt, offset, base) => write!(f, "LDC{}    {}, {}({})", cop, rt, offset, base),
+            LDL(rt, offset, base) => write!(f, "LDL     {}, {}({})", rt, offset, base),
+            LDR(rt, offset, base) => write!(f, "LDR     {}, {}({})", rt, offset, base),
+            LH(rt, offset, base) => write!(f, "LH      {}, {}({})", rt, offset, base),
+            LHU(rt, offset, base) => write!(f, "LHU     {}, {}({})", rt, offset, base),
+            LL(rt, offset, base) => write!(f, "LL      {}, {}({})", rt, offset, base),
+            LLD(rt, offset, base) => write!(f, "LLD     {}, {}({})", rt, offset, base),
+            LUI(rt, imm) => write!(f, "LUI     {}, {}", rt, imm),
+            LW(rt, offset, base) => write!(f, "LW      {}, {}({})", rt, offset, base),
+            LWCz(cop, rt, offset, base) => write!(f, "LWC{}    {}, {}({})", cop, rt, offset, base),
+            LWL(rt, offset, base) => write!(f, "LWL     {}, {}({})", rt, offset, base),
+            LWR(rt, offset, base) => write!(f, "LWR     {}, {}({})", rt, offset, base),
+            LWU(rt, offset, base) => write!(f, "LWU     {}, {}({})", rt, offset, base),
+            MFC0(rt, rd) => write!(f, "MFC0    {}, {}", rt, rd),
+            MFCz(cop, rt, rd) => write!(f, "MFC{}    {}, {}", cop, rt, rd),
+            MFHI(rd) => write!(f, "MFHI    {}", rd),
+            MFLO(rd) => write!(f, "MFLO    {}", rd),
+            MTC0(rt, rd) => write!(f, "MTC0    {}, {}", rt, rd),
+            MTCz(cop, rt, rd) => write!(f, "MTC{}    {}, {}", cop, rt, rd),
+            MTHI(rs) => write!(f, "MTHI    {}", rs),
+            MTLO(rs) => write!(f, "MTLO    {}", rs),
+            MULT(rs, rt) => write!(f, "MULT    {}, {}", rs, rt),
+            MULTU(rs, rt) => write!(f, "MULTU   {}, {}", rs, rt),
+            NOR(rd, rs, rt) => write!(f, "NOR     {}, {}, {}", rd, rs, rt),
+            OR(rd, rs, rt) => write!(f, "OR      {}, {}, {}", rd, rs, rt),
+            ORI(rt, rs, imm) => write!(f, "ORI     {}, {}, {}", rt, rs, imm),
+            SB(rt, offset, base) => write!(f, "SB      {}, {}({})", rt, offset, base),
+            SC(rt, offset, base) => write!(f, "SC      {}, {}({})", rt, offset, base),
+            SCD(rt, offset, base) => write!(f, "SCD     {}, {}({})", rt, offset, base),
+            SD(rt, offset, base) => write!(f, "SD      {}, {}({})", rt, offset, base),
+            SDCz(cop, rt, offset, base) => write!(f, "SDC{}    {}, {}({})", cop, rt, offset, base),
+            SDL(rt, offset, base) => write!(f, "SDL     {}, {}({})", rt, offset, base),
+            SDR(rt, offset, base) => write!(f, "SDR     {}, {}({})", rt, offset, base),
+            SH(rt, offset, base) => write!(f, "SH      {}, {}({})", rt, offset, base),
+            SLL(rd, rt, sa) => write!(f, "SLL     {}, {}, {}", rd, rt, sa),
+            SLLV(rd, rt, rs) => write!(f, "SLLV    {}, {}, {}", rd, rt, rs),
+            SLT(rd, rs, rt) => write!(f, "SLT     {}, {}, {}", rd, rs, rt),
+            SLTI(rt, rs, imm) => write!(f, "SLTI    {}, {}, {}", rt, rs, imm),
+            SLTIU(rt, rs, imm) => write!(f, "SLTIU   {}, {}, {}", rt, rs, imm),
+            SLTU(rd, rs, rt) => write!(f, "SLTU    {}, {}, {}", rd, rs, rt),
+            SRA(rd, rt, sa) => write!(f, "SRA     {}, {}, {}", rd, rt, sa),
+            SRAV(rd, rt, rs) => write!(f, "SRAV    {}, {}, {}", rd, rt, rs),
+            SRL(rd, rt, sa) => write!(f, "SRL     {}, {}, {}", rd, rt, sa),
+            SRLV(rd, rt, rs) => write!(f, "SRLV    {}, {}, {}", rd, rt, rs),
+            SUB(rd, rs, rt) => write!(f, "SUB     {}, {}, {}", rd, rs, rt),
+            SUBU(rd, rs, rt) => write!(f, "SUBU    {}, {}, {}", rd, rs, rt),
+            SW(rt, offset, base) => write!(f, "SW      {}, {}({})", rt, offset, base),
+            SWCz(cop, rt, offset, base) => write!(f, "SWC{}    {}, {}({})", cop, rt, offset, base),
+            SWL(rt, offset, base) => write!(f, "SWL     {}, {}({})", rt, offset, base),
+            SWR(rt, offset, base) => write!(f, "SWR     {}, {}({})", rt, offset, base),
+            SYNC => write!(f, "SYNC"),
+            SYSCALL(0) => write!(f, "SYSCALL"),
+            SYSCALL(_code) => unimplemented!(),
+            TEQ(rs, rt, 0) => write!(f, "TEQ     {}, {}", rs, rt),
+            TEQ(_rs, _rt, _code) => unimplemented!(),
+            TEQI(rs, imm) => write!(f, "TEQI    {}, {}", rs, imm),
+            TGE(rs, rt, 0) => write!(f, "TGE     {}, {}", rs, rt),
+            TGE(_rs, _rt, _code) => unimplemented!(),
+            TGEI(rs, imm) => write!(f, "TGEI    {}, {}", rs, imm),
+            TGEIU(rs, imm) => write!(f, "TGEIU   {}, {}", rs, imm),
+            TGEU(rs, rt, 0) => write!(f, "TGEU    {}, {}", rs, rt),
+            TGEU(_rs, _rt, _code) => unimplemented!(),
+            TLBP => write!(f, "TLBP"),
+            TLBR => write!(f, "TLBR"),
+            TLBWI => write!(f, "TLBWI"),
+            TLBWR => write!(f, "TLBWR"),
+            TLT(rs, rt, 0) => write!(f, "TLT     {}, {}", rs, rt),
+            TLT(_rs, _rt, _code) => unimplemented!(),
+            TLTI(rs, imm) => write!(f, "TLTI    {}, {}", rs, imm),
+            TLTIU(rs, imm) => write!(f, "TLTIU   {}, {}", rs, imm),
+            TLTU(rs, rt, 0) => write!(f, "TLTU    {}, {}", rs, rt),
+            TLTU(_rs, _rt, _code) => unimplemented!(),
+            TNE(rs, rt, 0) => write!(f, "TNE     {}, {}", rs, rt),
+            TNE(_rs, _rt, _code) => unimplemented!(),
+            TNEI(rs, imm) => write!(f, "TNEI    {}, {}", rs, imm),
+            XOR(rd, rs, rt) => write!(f, "XOR     {}, {}, {}", rd, rs, rt),
+            XORI(rt, rs, imm) => write!(f, "XORI    {}, {}, {}", rt, rs, imm),
+        }
+    }
+}
