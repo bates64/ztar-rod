@@ -14,8 +14,3 @@ pest_derive = "2.1.0"
 lazy_static = "1.3.0"
 ascii = "0.9.1"
 png = "0.14.1"
-
-[profile.release]
-opt-level = 'z'
-#codegen-units = 1
-panic = 'abort'
