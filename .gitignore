@@ -1,6 +1,6 @@
 *.n64
 *.v64
 *.z64
-/target
+/ztar-rod/target
 /mod
 **/*.rs.bk
