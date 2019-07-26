@@ -182,3 +182,129 @@ pub fn decode(instruction: [u8; 4]) -> Option<Instruction> {
         None
     }
 }
+
+#[cfg(test)]
+mod test {
+
+    use std::convert::TryInto;
+
+    use super::{Instruction, Register};
+    use Instruction::*;
+    use Register::*;
+
+    fn decode(code: &[u8]) -> Option<Vec<Instruction>> {
+        code.chunks(4)
+            .map(|word| word.try_into().unwrap())
+            .map(Instruction::decode)
+            .collect()
+    }
+
+    #[test]
+    fn decode_factorial_works() {
+        // int factorial(int i) {
+        //     if (i == 0) return 1;
+        //     else        return i * factorial(i-1);
+        // }
+
+        let decoded = decode(&[
+            0x27, 0xbd, 0xff, 0xf8, 0xaf, 0xbe, 0x00, 0x04, 0x03, 0xa0, 0xf0, 0x25, 0x10, 0x80,
+            0x00, 0x06, 0x24, 0x02, 0x00, 0x01, 0x00, 0x82, 0x00, 0x18, 0x00, 0x00, 0x10, 0x12,
+            0x24, 0x84, 0xff, 0xff, 0x14, 0x80, 0xff, 0xfc, 0x00, 0x00, 0x00, 0x00, 0x03, 0xc0,
+            0xe8, 0x25, 0x8f, 0xbe, 0x00, 0x04, 0x03, 0xe0, 0x00, 0x08, 0x27, 0xbd, 0x00, 0x08,
+        ])
+        .unwrap();
+
+        assert_eq!(
+            &decoded,
+            &[
+                ADDIU(SP, SP, -8),
+                SW(S8, 0x4, SP),
+                OR(S8, SP, R0),
+                BEQ(A0, R0, 6),
+                ADDIU(V0, R0, 1),
+                MULT(A0, V0),
+                MFLO(V0),
+                ADDIU(A0, A0, -1),
+                BNE(A0, R0, -4),
+                SLL(R0, R0, 0),
+                OR(SP, S8, R0),
+                LW(S8, 0x4, SP),
+                JR(RA),
+                ADDIU(SP, SP, 8),
+            ]
+        );
+    }
+
+    #[test]
+    fn decode_strcopy_works() {
+        // void strcpy(char *dest, char *src) {
+        //     while ((*dest++ = *src++));
+        // }
+
+        let decoded = decode(&[
+            0x27, 0xbd, 0xff, 0xf8, 0xaf, 0xbe, 0x00, 0x04, 0x03, 0xa0, 0xf0, 0x25, 0x90, 0xa1,
+            0x00, 0x00, 0x24, 0xa5, 0x00, 0x01, 0xa0, 0x81, 0x00, 0x00, 0x14, 0x20, 0xff, 0xfc,
+            0x24, 0x84, 0x00, 0x01, 0x03, 0xc0, 0xe8, 0x25, 0x8f, 0xbe, 0x00, 0x04, 0x03, 0xe0,
+            0x00, 0x08, 0x27, 0xbd, 0x00, 0x08,
+        ])
+        .unwrap();
+
+        assert_eq!(
+            &decoded,
+            &[
+                ADDIU(SP, SP, -8),
+                SW(S8, 0x4, SP),
+                OR(S8, SP, R0),
+                LBU(AT, 0, A1),
+                ADDIU(A1, A1, 1),
+                SB(AT, 0, A0),
+                BNE(AT, R0, -4),
+                ADDIU(A0, A0, 1),
+                OR(SP, S8, R0),
+                LW(S8, 0x4, SP),
+                JR(RA),
+                ADDIU(SP, SP, 8),
+            ]
+        );
+    }
+
+    #[test]
+    fn decode_popcnt_works() {
+        // unsigned popcnt2(unsigned i) {
+        //     unsigned count = 0;
+        //     while (i != 0) {
+        //         if (i & 1) count++;
+        //         i >>= 1;
+        //     }
+        //     return count;
+        // }
+
+        let decoded = decode(&[
+            0x27, 0xbd, 0xff, 0xf8, 0xaf, 0xbe, 0x00, 0x04, 0x03, 0xa0, 0xf0, 0x25, 0x10, 0x80,
+            0x00, 0x05, 0x24, 0x02, 0x00, 0x00, 0x30, 0x81, 0x00, 0x01, 0x00, 0x04, 0x20, 0x42,
+            0x14, 0x80, 0xff, 0xfd, 0x00, 0x41, 0x10, 0x21, 0x03, 0xc0, 0xe8, 0x25, 0x8f, 0xbe,
+            0x00, 0x04, 0x03, 0xe0, 0x00, 0x08, 0x27, 0xbd, 0x00, 0x08,
+        ])
+        .unwrap();
+
+        assert_eq!(
+            &decoded,
+            &[
+                ADDIU(SP, SP, -8),
+                SW(S8, 0x4, SP),
+                OR(S8, SP, R0),
+                BEQ(A0, R0, 5),
+                ADDIU(V0, R0, 0),
+                ANDI(AT, A0, 1),
+                SRL(A0, A0, 1),
+                BNE(A0, R0, -3),
+                ADDU(V0, V0, AT),
+                OR(SP, S8, R0),
+                LW(S8, 0x4, SP),
+                JR(RA),
+                ADDIU(SP, SP, 8)
+            ]
+        );
+    }
+
+}
