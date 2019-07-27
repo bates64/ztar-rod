@@ -1,0 +1,15 @@
+[package]
+name = "ztar-gui"
+version = "0.1.0"
+authors = ["alex (imalex.xyz)"]
+edition = "2018"
+
+[dependencies]
+ztar-rod = { path = "../ztar-rod" }
+
+open = "1"
+porthole = "0.1"
+
+iron = "0.6"
+mount = "*"
+staticfile = "*"

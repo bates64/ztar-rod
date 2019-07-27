@@ -1,0 +1,16 @@
+{
+  "devDependencies": {
+    "prettier": "^1.18.2",
+    "typescript": "^3.5.3"
+  },
+  "scripts": {
+    "build": "tsc",
+    "fmt": "prettier app/**/*.{ts,html,css} --write",
+    "check": "prettier app/**/*.{ts,html,css} --check --list-different"
+  },
+  "prettier": {
+    "tabWidth": 4,
+    "singleQuote": true,
+    "trailingComma": "all"
+  }
+}
