@@ -1,10 +1,12 @@
 use itertools::Itertools;
 use png::HasParameters;
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::fs::{self, File};
 
 use super::shape::Shape;
 use crate::data::color::Palette;
+use crate::data::texture::{decode_archive, Texture};
 use crate::data::yay0;
 use crate::mod_dir::ModDir;
 use crate::rom::*;
@@ -59,6 +61,12 @@ impl AssetTable {
                     writer.write_image_data(&raster.1).unwrap();
                 }
 
+                AssetData::TextureArchive(textures) => {
+                    for (name, tex) in &textures {
+                        tex.save(name);
+                    }
+                }
+
                 AssetData::Shape { shape } => {
                     // TODO
                 }
@@ -106,6 +114,8 @@ pub enum AssetData {
     Shape {
         shape: Shape,
     },
+
+    TextureArchive(BTreeMap<AsciiString, Texture>),
 
     Unknown {
         bytes: Vec<u8>,
@@ -174,6 +184,8 @@ impl RomRead for Asset {
                         Palette::from_rgba16(&bytes[palette_addr..palette_addr + 256 * 2])
                     }),
                 }
+            } else if name.as_str().ends_with("_tex") {
+                AssetData::TextureArchive(decode_archive(&bytes))
             } else if name.as_str().ends_with("_shape") {
                 AssetData::Shape {
                     shape: Shape::parse(bytes)?,

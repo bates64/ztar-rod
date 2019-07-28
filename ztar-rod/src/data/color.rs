@@ -13,6 +13,12 @@ pub struct Color {
     pub a: u8,
 }
 
+#[derive(Debug, Clone)]
+pub struct Gray {
+    pub i: u8,
+    pub a: u8,
+}
+
 impl Palette {
     pub fn into_rgba16(self) -> Vec<u8> {
         let mut packed = Vec::with_capacity(self.colors.len() * 2);
@@ -115,5 +121,41 @@ impl Color {
             b: (s >> 8) as u8,
             a: s as u8,
         }
+    }
+
+    pub fn into_arr(self) -> [u8; 4] {
+        [self.r, self.g, self.b, self.a]
+    }
+}
+
+impl Gray {
+    pub fn from_ia4(pair: u8) -> (Gray, Gray) {
+        let hi = pair >> 4;
+        let lo = pair & 0x0f;
+
+        (
+            Gray {
+                i: (255.0 * (f32::from(hi >> 1) / 7.0)) as u8,
+                a: if (hi & 1) == 1 { 0xFF } else { 0x00 },
+            },
+            Gray {
+                i: (255.0 * (f32::from(lo >> 1) / 7.0)) as u8,
+                a: if (lo & 1) == 1 { 0xFF } else { 0x00 },
+            },
+        )
+    }
+
+    pub fn from_ia8(s: u8) -> Gray {
+        let hi = s >> 4;
+        let lo = s & 0x0f;
+
+        Gray {
+            i: (255.0 * (f32::from(hi) / 15.0)) as u8,
+            a: (255.0 * (f32::from(lo) / 15.0)) as u8,
+        }
+    }
+
+    pub fn into_arr(self) -> [u8; 2] {
+        [self.i, self.a]
     }
 }
