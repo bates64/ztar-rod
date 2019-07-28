@@ -2,11 +2,10 @@ language: rust
 
 before_script:
 - rustup component add rustfmt
-- nvm install latest
-- NODE_ENV=development cd ztar-rod && npm ci
+- nvm install 10
 
 script:
+- NODE_ENV=development cd ztar-gui && npm ci && npm run check 
 - cargo fmt --all -- --check
-- cd ztar-rod && npm run check
 - cargo build
 - cargo test

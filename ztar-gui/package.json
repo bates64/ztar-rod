@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "fmt": "prettier app/**/*.{ts,html,css} --write",
-    "check": "prettier app/**/*.{ts,html,css} --check --list-different"
+    "check": "prettier app/**/*.{ts,html,css} --check"
   },
   "prettier": {
     "tabWidth": 4,
